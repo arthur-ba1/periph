@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = ["crates/vt2-probe", "crates/vt2-proto", "crates/vt2-device", "crates/vt2-cli", "crates/vt2-gui", "crates/periph-core", "crates/periph-app", "crates/via"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+# Default (bundled C hidapi) backend: windows-native lacks get_input_report.
+hidapi = "2.6"
+anyhow = "1"

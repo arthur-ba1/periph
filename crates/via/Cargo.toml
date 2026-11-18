@@ -1,0 +1,10 @@
+[package]
+name = "via"
+description = "Client for the QMK/VIA raw HID protocol (keymaps, encoders, lighting)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+hidapi.workspace = true
+anyhow.workspace = true

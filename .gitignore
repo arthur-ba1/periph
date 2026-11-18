@@ -1,0 +1,21 @@
+# build output
+/target
+/app/dist
+/app/node_modules
+/crates/periph-app/gen
+
+# local ML tooling (Hunyuan3D, venv, model weights, generated meshes)
+/ml
+
+# editor / OS
+.vscode/
+*.log
+Thumbs.db
+
+# Vendor artwork extracted from the official software (copyrighted, never commit).
+# Each device keeps a NOTICE.md in its assets folder explaining how to regenerate them locally.
+/app/src/devices/*/assets/*
+!/app/src/devices/*/assets/NOTICE.md
+
+# Raw HID captures (tools/hidhook.py) can contain serial numbers and pairing data
+/captures/

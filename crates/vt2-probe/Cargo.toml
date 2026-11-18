@@ -1,0 +1,11 @@
+[package]
+name = "vt2-probe"
+description = "Read-only HID discovery for Rapoo devices (VID 0x24AE). Never writes to the device."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+hidapi.workspace = true
+anyhow.workspace = true
+via = { path = "../via" }

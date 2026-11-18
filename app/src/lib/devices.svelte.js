@@ -1,0 +1,79 @@
+// Device registry: discovers the modules in src/devices/<id>/ and wires them to the backend.
+//
+// Every folder in src/devices/<id>/ with an index.js is a device module (folders starting with
+// "_" are ignored). The Rust driver with the same id feeds it through the "device" event:
+//   { device: "<id>", type: "connected" | "disconnected" | "config" | "status" | "error" | "done", ... }
+// and receives commands through `send(id, cmd)` (shape defined by the driver).
+//
+// Live state lives in device-state.svelte.js so device modules can import it without a cycle.
+// See docs/adding-a-device.md for what a module exports.
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { toast } from "svelte-sonner";
+import { devices, deviceState, setDemoHandler, DEMO } from "./device-state.svelte.js";
+
+export { devices, deviceState, send, DEMO } from "./device-state.svelte.js";
+
+const found = import.meta.glob("../devices/*/index.js", { eager: true, import: "default" });
+
+/** Device modules, sorted by `order`. */
+export const MODULES = Object.entries(found)
+  .filter(([path]) => !path.split("/").at(-2).startsWith("_"))
+  .map(([, m]) => m)
+  .sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+MODULES.forEach((m) => {
+  deviceState(m.id);
+  if (m.demo?.apply) setDemoHandler(m.id, m.demo.apply);
+});
+
+export const moduleFor = (id) => MODULES.find((m) => m.id === id);
+
+/** Name to show for a device (modules may derive it from the config, e.g. the VIA definition). */
+export const displayName = (m) => m.displayName?.(devices[m.id]) ?? m.name;
+
+function onEvent(id, e) {
+  const d = devices[id], m = moduleFor(id);
+  if (!d) return;
+  switch (e.type) {
+    case "connected":
+      Object.assign(d, { connected: true, product: e.product, serial: e.serial, reason: null });
+      break;
+    case "disconnected":
+      // only announce losing a device we actually had loaded (retries while absent stay quiet)
+      if (d.config) toast.warning(`${displayName(m)} desconectado`);
+      Object.assign(d, { connected: false, config: null, status: null, reason: e.reason, busy: false });
+      break;
+    case "config": {
+      const first = !d.config;
+      d.config = e.config;
+      if (first) toast.success(`${displayName(m)} conectado`);
+      break;
+    }
+    case "status":
+      d.status = e.status;
+      break;
+    case "error":
+      toast.error(e.message);
+      break;
+    case "done":
+      d.busy = false;
+      break;
+  }
+}
+
+export async function initDevices() {
+  if (DEMO) {
+    for (const m of MODULES) if (m.demo) Object.assign(devices[m.id], { connected: true, driver: true, reason: null, ...structuredClone(m.demo.state) });
+    return;
+  }
+  try {
+    for (const entry of await invoke("devices")) {
+      if (!devices[entry.id]) continue; // driver without a frontend module
+      Object.assign(devices[entry.id], entry.snapshot, { driver: true });
+    }
+  } catch {
+    for (const d of Object.values(devices)) d.reason = "rodando fora do app (sem backend)";
+    return;
+  }
+  await listen("device", ({ payload }) => onEvent(payload.device, payload));
+}

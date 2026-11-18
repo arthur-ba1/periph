@@ -1,0 +1,11 @@
+[package]
+name = "vt2-device"
+description = "hidapi transport for the Rapoo VT2 Max"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+vt2-proto = { path = "../vt2-proto" }
+hidapi.workspace = true
+anyhow.workspace = true

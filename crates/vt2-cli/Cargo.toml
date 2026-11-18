@@ -1,0 +1,16 @@
+[package]
+name = "vt2-cli"
+description = "Command-line configurator for the Rapoo VT2 Max"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vt2"
+path = "src/main.rs"
+
+[dependencies]
+vt2-proto = { path = "../vt2-proto" }
+vt2-device = { path = "../vt2-device" }
+anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }

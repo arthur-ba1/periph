@@ -1,0 +1,17 @@
+[package]
+name = "vt2-gui"
+description = "Tray + window configurator for the Rapoo VT2 Max"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "vt2-gui"
+path = "src/main.rs"
+
+[dependencies]
+vt2-proto = { path = "../vt2-proto" }
+vt2-device = { path = "../vt2-device" }
+anyhow.workspace = true
+eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts"] }
+tray-icon = "0.26"
