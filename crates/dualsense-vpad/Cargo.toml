@@ -1,0 +1,24 @@
+[package]
+name = "dualsense-vpad"
+description = "User-mode channel to the Periph virtual DualSense kernel driver (VHF), with a mock for tests."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+dualsense-proto = { path = "../dualsense-proto" }
+anyhow.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_WindowsProgramming",
+    "Win32_Security",
+] }
+
+[dev-dependencies]
+# examples/smoke.rs only
+hidapi.workspace = true
+hidhide = { path = "../hidhide" }

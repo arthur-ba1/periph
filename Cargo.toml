@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/vt2-probe", "crates/vt2-proto", "crates/vt2-device", "crates/vt2-cli", "crates/vt2-gui", "crates/periph-core", "crates/periph-app", "crates/via"]
+members = ["crates/vt2-probe", "crates/vt2-proto", "crates/vt2-device", "crates/vt2-cli", "crates/vt2-gui", "crates/periph-core", "crates/periph-app", "crates/via", "crates/dualsense-proto", "crates/dualsense-vpad", "crates/hidhide"]
 
 [workspace.package]
 edition = "2021"

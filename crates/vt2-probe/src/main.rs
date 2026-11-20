@@ -4,6 +4,10 @@
 //!   vt2-probe                 list interfaces + report descriptors
 //!   vt2-probe --listen 10     also print input reports from vendor interfaces for 10 s
 //!   vt2-probe --vid 24ae      vendor id in hex (default 24ae)
+//!   vt2-probe --vid 054c --ds-features
+//!                             read-only dump of the DualSense feature reports a virtual
+//!                             controller must answer (0x05 calibration, 0x09 MAC, 0x20 firmware
+//!                             info, 0x22 BT patch). Uses GET_FEATURE only; nothing is written.
 //!
 //! This tool never sends output or feature reports to the device.
 
@@ -28,6 +32,33 @@ fn main() -> Result<()> {
     let listen = arg("--listen").map(|s| s.parse::<u64>()).transpose()?;
 
     let api = HidApi::new()?;
+
+    if args.iter().any(|a| a == "--ds-features") {
+        // GET_FEATURE reads only, on the standard gamepad collection (usage page 0x01/usage 0x05).
+        for d in api.device_list().filter(|d| {
+            d.vendor_id() == vid && d.product_id() == 0x0CE6 && d.usage_page() == 0x01 && d.usage() == 0x05
+        }) {
+            println!("## {}  serial={:?}", d.path().to_string_lossy(), d.serial_number().unwrap_or(""));
+            let dev = match d.open_device(&api) {
+                Ok(h) => h,
+                Err(e) => {
+                    println!("  (could not open: {e})\n");
+                    continue;
+                }
+            };
+            for (id, len) in [(0x05u8, 41usize), (0x09, 20), (0x20, 64), (0x22, 64)] {
+                let mut buf = vec![0u8; len];
+                buf[0] = id;
+                match dev.get_feature_report(&mut buf) {
+                    Ok(n) => println!("  feature 0x{id:02X} ({n} bytes): {}", hex(&buf[..n])),
+                    Err(e) => println!("  feature 0x{id:02X}: error: {e}"),
+                }
+            }
+            println!();
+        }
+        return Ok(());
+    }
+
     let mut devs: Vec<&DeviceInfo> = api.device_list().filter(|d| d.vendor_id() == vid).collect();
     devs.sort_by_key(|d| (d.product_id(), d.interface_number(), d.usage_page(), d.usage()));
 

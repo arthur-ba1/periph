@@ -1,0 +1,12 @@
+[package]
+name = "dualsense-proto"
+description = "Sony DualSense HID reports (pure, no I/O): input 0x01, output 0x02, feature reports."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+serde_json = "1"

@@ -1205,6 +1205,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "dualsense-proto"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "dualsense-vpad"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dualsense-proto",
+ "hidapi",
+ "hidhide",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2101,6 +2120,14 @@ dependencies = [
  "libc",
  "pkg-config",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "hidhide"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3544,6 +3571,10 @@ name = "periph-app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dualsense-proto",
+ "dualsense-vpad",
+ "hidapi",
+ "hidhide",
  "periph-core",
  "resvg",
  "serde",
@@ -3555,6 +3586,7 @@ dependencies = [
  "via",
  "vt2-device",
  "vt2-proto",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

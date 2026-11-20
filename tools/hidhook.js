@@ -55,15 +55,43 @@ for (const fn of ['hid_read_timeout', 'hid_read', 'hid_get_feature_report', 'hid
   });
 }
 // ---- Windows HID layer ----
+// Frida 17 removed the static Module.findExportByName; look the module up first.
+function winExport(mod, name) {
+  const m = Process.findModuleByName(mod);
+  return m ? m.findExportByName(name) : null;
+}
 function hookWin(mod, name, cb) {
-  const addr = Module.findExportByName(mod, name);
+  const addr = winExport(mod, name);
   if (!addr) { send({ ev: 'missing', name: mod + '!' + name }); return; }
   Interceptor.attach(addr, cb);
 }
 if (WINHID) {
   try { Module.load('hid.dll'); } catch (e) {}
+  // handle -> true (HID) / false (not HID). Handles opened before we attached are classified on
+  // first WriteFile with HidD_GetAttributes, only for device-type handles: disk files and pipes
+  // are skipped so we never issue an IOCTL on a handle that could block the app.
   const hidHandles = {};
-  hookWin('kernel32.dll', 'CreateFileW', {
+  const getFileType = new NativeFunction(winExport('KERNELBASE.dll', 'GetFileType'), 'uint32', ['pointer']);
+  const getAttributes = new NativeFunction(winExport('hid.dll', 'HidD_GetAttributes'), 'int', ['pointer', 'pointer']);
+  function isHid(h) {
+    const k = h.toString();
+    if (k in hidHandles) return hidHandles[k];
+    let hid = false;
+    const type = getFileType(h);
+    if (type !== 1 && type !== 3) { // not FILE_TYPE_DISK, not FILE_TYPE_PIPE
+      const attrs = Memory.alloc(12);
+      attrs.writeU32(12);
+      if (getAttributes(h, attrs)) {
+        hid = true;
+        const id = 'vid_' + attrs.add(4).readU16().toString(16).padStart(4, '0') + '&pid_' + attrs.add(6).readU16().toString(16).padStart(4, '0');
+        devPath[k] = devPath[k] || id;
+        send({ ev: 'open', dev: k, path: devPath[k], preexisting: true });
+      }
+    }
+    hidHandles[k] = hid;
+    return hid;
+  }
+  hookWin('KERNELBASE.dll', 'CreateFileW', {
     onEnter(a) { this.p = a[0].isNull() ? '' : a[0].readUtf16String(); },
     onLeave(r) {
       if (this.p && this.p.toLowerCase().indexOf('hid#') >= 0 && r.toInt32() !== -1) {
@@ -72,13 +100,17 @@ if (WINHID) {
       }
     }
   });
-  hookWin('kernel32.dll', 'CloseHandle', {
-    onEnter(a) { const k = a[0].toString(); if (hidHandles[k]) { delete hidHandles[k]; send({ ev: 'close', dev: k, path: devPath[k] || null }); } }
+  hookWin('KERNELBASE.dll', 'CloseHandle', {
+    onEnter(a) {
+      const k = a[0].toString();
+      if (hidHandles[k]) send({ ev: 'close', dev: k, path: devPath[k] || null });
+      delete hidHandles[k]; // handle values are reused: classify again next time
+    }
   });
-  hookWin('kernel32.dll', 'WriteFile', {
-    onEnter(a) { if (hidHandles[a[0].toString()]) emit('WriteFile', a[0], a[1], a[2].toInt32()); }
+  hookWin('KERNELBASE.dll', 'WriteFile', {
+    onEnter(a) { if (isHid(a[0])) emit('WriteFile', a[0], a[1], a[2].toInt32()); }
   });
-  hookWin('kernel32.dll', 'ReadFile', {
+  hookWin('KERNELBASE.dll', 'ReadFile', {
     onEnter(a) { this.dev = a[0]; this.buf = a[1]; this.nread = a[3]; this.on = !!hidHandles[a[0].toString()]; },
     onLeave(r) {
       if (!this.on || r.toInt32() === 0 || this.nread.isNull()) return; // async read: data arrives later

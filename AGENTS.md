@@ -11,6 +11,10 @@ implementation: a Rust driver plus a Svelte module that share an id.
   device and the registry in `drivers/mod.rs`; `src/tray.rs` is the generic tray
 - `crates/vt2-proto`, `crates/vt2-device`: Rapoo VT2 Max protocol (pure) and HID transport
 - `crates/via`: VIA keyboard protocol; definitions live in `app/src/devices/via/keyboards/`
+- `crates/dualsense-proto`, `crates/dualsense-vpad`, `crates/hidhide`: DualSense reports (pure),
+  user-mode channel to the virtual pad driver, HidHide client (hide the physical pad)
+- The virtual DualSense kernel driver (`periph-vpad`, KMDF + VHF) lives in its own repository;
+  `crates/dualsense-vpad` is its client. See `docs/dualsense-implementation.md`
 - `crates/vt2-probe`: read-only HID discovery (`vt2-probe --vid <hex>`, `via-probe`)
 - `app/src/devices/<id>/`: device UI modules, auto-discovered; `app/src/lib/devices.svelte.js`
   is the registry, `app/src/lib/device-state.svelte.js` the shared state and `send()`
@@ -29,13 +33,22 @@ decoding, the protocol crate, the driver, the UI module and verification.
   no firmware/bootloader/factory-reset commands; discovery tools stay read-only.
 - Vendor artwork is copyrighted: `app/src/devices/*/assets/` is git-ignored (except
   `NOTICE.md`); code must work when those files are missing.
-- UI copy is Portuguese (pt-BR); code, comments and docs are English.
+- No user-visible literal strings: UI, tray and user-facing errors go through `t()` with keys in
+  every language file (`app/src/locales/`, `app/src/devices/<id>/locales/`). See
+  `docs/translating.md`. `npm --prefix app run check:i18n` must pass.
+- Code, comments and docs are English; the READMEs exist in English and Portuguese.
+- Commits and PRs carry no attribution trailers: no `Co-Authored-By:` and no
+  "Generated with Claude Code". The `.githooks/commit-msg` hook (enable with
+  `git config core.hooksPath .githooks`) and CI reject them; `.claude/settings.json` turns
+  Claude Code's attribution off. Never bypass the hook.
 
 ## Commands
 
 ```
+git config core.hooksPath .githooks   # once per clone
 cargo test --workspace
 npm --prefix app install
+npm --prefix app run check:i18n
 npm --prefix app run build             # frontend into app/dist (embedded in the exe)
 cargo build --release -p periph-app    # target/release/periph.exe
 npm --prefix app run dev               # UI only, http://localhost:5173/?demo (fake devices)

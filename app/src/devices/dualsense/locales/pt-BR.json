@@ -1,0 +1,156 @@
+{
+  "name": "DualSense",
+  "tabs": {
+    "emulation": "Emulação",
+    "lights": "Luzes",
+    "triggers": "Gatilhos"
+  },
+  "card": {
+    "connected": "Conectado",
+    "emulating": "Emulando",
+    "searching": "Procurando",
+    "battery": "Bateria",
+    "charging": "Carregando",
+    "full": "Carregado",
+    "low": "Bateria fraca"
+  },
+  "badges": {
+    "emulating": "Controle virtual ligado",
+    "hidden": "Físico escondido"
+  },
+  "waiting": {
+    "searching": "Procurando o DualSense",
+    "reading": "Lendo o controle…",
+    "text": "Conecte o controle com um cabo USB ou pareie por Bluetooth.",
+    "emulatorRunningTitle": "Outro emulador está usando o controle",
+    "hiddenTitle": "O controle está escondido"
+  },
+  "emulation": {
+    "title": "Emulação",
+    "virtualTitle": "DualSense virtual",
+    "active": "Ligado",
+    "inactive": "Desligado",
+    "forward": "Repassar efeitos ao controle",
+    "hide": "Esconder o controle físico",
+    "hidHideMissing": "O HidHide não está instalado, então os jogos veem os dois controles durante a emulação. Instale o HidHide (github.com/nefarius/HidHide) para esconder o físico.",
+    "statBattery": "Bateria",
+    "statReports": "Reports do jogo",
+    "statHidHide": "HidHide",
+    "hidHide": {
+      "missing": "Não instalado",
+      "off": "Visível",
+      "hiding": "Escondido"
+    }
+  },
+  "override": {
+    "title": "Sobrepor o jogo",
+    "help": "O que isso faz?",
+    "desc": "Durante a emulação, os jogos podem definir as próprias luzes e efeitos de gatilho.",
+    "offLabel": "Desligado",
+    "off": "o jogo tem prioridade; seu ajuste só vale quando o jogo não define nada.",
+    "onLabel": "Ligado",
+    "on": "seu ajuste sempre vale."
+  },
+  "lights": {
+    "title": "Luzes",
+    "lightbar": "Barra de luz",
+    "modes": {
+      "none": "Não alterar",
+      "static": "Fixa",
+      "breathing": "Respiração",
+      "strobe": "Piscar",
+      "rainbow": "Arco-íris"
+    },
+    "custom": "Outra",
+    "brightness": "Brilho",
+    "speed": "Velocidade",
+    "player": "LEDs de player",
+    "led": "LED {n}",
+    "playerN": "Player {n}",
+    "allLeds": "Todos",
+    "ledBrightness": "Brilho",
+    "levels": {
+      "high": "Alto",
+      "medium": "Médio",
+      "low": "Baixo"
+    },
+    "mic": "LED do microfone",
+    "micOn": "Aceso",
+    "playerShort": "LEDs",
+    "micShort": "Microfone",
+    "pickerField": "Saturação e brilho",
+    "pickerHue": "Matiz"
+  },
+  "triggers": {
+    "title": "Gatilhos",
+    "mode": "Efeito",
+    "none": "Não alterar",
+    "modes": {
+      "off": "Sem resistência",
+      "feedback": "Resistência contínua",
+      "weapon": "Arma",
+      "vibration": "Vibração",
+      "slope": "Resistência de inclinação",
+      "multiFeedback": "Resistência de múltiplas posições",
+      "multiVibration": "Vibração de múltiplas posições",
+      "bow": "Arco",
+      "galloping": "Galope",
+      "machine": "Máquina",
+      "gameCube": "GameCube",
+      "custom": "Personalizado"
+    },
+    "params": {
+      "start": "Posição inicial",
+      "end": "Posição final",
+      "strength": "Força",
+      "amplitude": "Amplitude",
+      "frequency": "Frequência",
+      "startStrength": "Força no início",
+      "endStrength": "Força no fim",
+      "snap": "Força da soltura",
+      "firstFoot": "Primeira pisada",
+      "secondFoot": "Segunda pisada",
+      "amplitudeA": "Amplitude A",
+      "amplitudeB": "Amplitude B",
+      "period": "Período",
+      "mode": "Modo"
+    },
+    "custom": {
+      "1": "Rígido",
+      "5": "Rígido B",
+      "33": "Rígido A",
+      "34": "Pulso A",
+      "37": "Rígido AB"
+    },
+    "zone": "Zona {n}: {v}",
+    "released": "Solto",
+    "pressed": "Totalmente pressionado",
+    "force": "Força {n}",
+    "leftShort": "L2",
+    "rightShort": "R2",
+    "both": "L2 + R2",
+    "link": "Unir gatilhos"
+  },
+  "errors": {
+    "notFound": "Nenhum DualSense conectado por USB.",
+    "emulatorRunning": "Só um DualSense emulado está visível. Feche outros emuladores de controle para usar o controle físico.",
+    "driverMissing": "O driver de controle virtual do Periph não está instalado.",
+    "hidHide": "Não foi possível esconder o controle físico com o HidHide; os jogos podem ver dois controles.",
+    "disconnected": "O controle foi desconectado.",
+    "hidden": "O controle está escondido pelo HidHide. Adicione o Periph à lista de aplicativos do HidHide ou tire o controle da lista de dispositivos."
+  },
+  "stage": {
+    "label": "Prévia do controle",
+    "parts": {
+      "overview": "Controle",
+      "lightbar": "Barra de luz",
+      "player": "LEDs de jogador",
+      "mic": "LED do microfone",
+      "triggers": "Gatilhos adaptáveis",
+      "l2": "Gatilho L2",
+      "r2": "Gatilho R2"
+    },
+    "noModel": "Adicione o modelo 3D para ver o controle aqui (veja assets/NOTICE.md).",
+    "credit": "Modelo 3D: “Playstation 5 Dualsense” de AHarmlessPotato (CC BY 4.0)"
+  }
+}

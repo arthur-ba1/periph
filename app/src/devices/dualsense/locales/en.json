@@ -1,0 +1,156 @@
+{
+  "name": "DualSense",
+  "tabs": {
+    "emulation": "Emulation",
+    "lights": "Lights",
+    "triggers": "Triggers"
+  },
+  "card": {
+    "connected": "Connected",
+    "emulating": "Emulating",
+    "searching": "Searching",
+    "battery": "Battery",
+    "charging": "Charging",
+    "full": "Charged",
+    "low": "Low battery"
+  },
+  "badges": {
+    "emulating": "Virtual controller on",
+    "hidden": "Physical hidden"
+  },
+  "waiting": {
+    "searching": "Looking for the DualSense",
+    "reading": "Reading the controller…",
+    "text": "Connect the controller with a USB cable or pair it over Bluetooth.",
+    "emulatorRunningTitle": "Another emulator is using the controller",
+    "hiddenTitle": "The controller is hidden"
+  },
+  "emulation": {
+    "title": "Emulation",
+    "virtualTitle": "Virtual DualSense",
+    "active": "On",
+    "inactive": "Off",
+    "forward": "Send feedback to the controller",
+    "hide": "Hide the physical controller",
+    "hidHideMissing": "HidHide is not installed, so games see both controllers while emulating. Install HidHide (github.com/nefarius/HidHide) to hide the physical one.",
+    "statBattery": "Battery",
+    "statReports": "Game reports",
+    "statHidHide": "HidHide",
+    "hidHide": {
+      "missing": "Not installed",
+      "off": "Visible",
+      "hiding": "Hidden"
+    }
+  },
+  "override": {
+    "title": "Override the game",
+    "help": "What does this do?",
+    "desc": "While emulating, games can set their own lights and trigger effects.",
+    "offLabel": "Off",
+    "off": "the game wins; your setting applies only when the game sets nothing.",
+    "onLabel": "On",
+    "on": "your setting always wins."
+  },
+  "lights": {
+    "title": "Lights",
+    "lightbar": "Lightbar",
+    "modes": {
+      "none": "Don't change",
+      "static": "Static",
+      "breathing": "Breathing",
+      "strobe": "Blink",
+      "rainbow": "Rainbow"
+    },
+    "custom": "Other",
+    "brightness": "Brightness",
+    "speed": "Speed",
+    "player": "Player LEDs",
+    "led": "LED {n}",
+    "playerN": "Player {n}",
+    "allLeds": "All",
+    "ledBrightness": "Brightness",
+    "levels": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "mic": "Mic LED",
+    "micOn": "Lit",
+    "playerShort": "LEDs",
+    "micShort": "Mic",
+    "pickerField": "Saturation and brightness",
+    "pickerHue": "Hue"
+  },
+  "triggers": {
+    "title": "Triggers",
+    "mode": "Effect",
+    "none": "Don't change",
+    "modes": {
+      "off": "No resistance",
+      "feedback": "Continuous resistance",
+      "weapon": "Weapon",
+      "vibration": "Vibration",
+      "slope": "Slope resistance",
+      "multiFeedback": "Multi-position resistance",
+      "multiVibration": "Multi-position vibration",
+      "bow": "Bow",
+      "galloping": "Galloping",
+      "machine": "Machine",
+      "gameCube": "GameCube",
+      "custom": "Custom"
+    },
+    "params": {
+      "start": "Start position",
+      "end": "End position",
+      "strength": "Strength",
+      "amplitude": "Amplitude",
+      "frequency": "Frequency",
+      "startStrength": "Strength at start",
+      "endStrength": "Strength at end",
+      "snap": "Snap force",
+      "firstFoot": "First step",
+      "secondFoot": "Second step",
+      "amplitudeA": "Amplitude A",
+      "amplitudeB": "Amplitude B",
+      "period": "Period",
+      "mode": "Mode"
+    },
+    "custom": {
+      "1": "Rigid",
+      "5": "Rigid B",
+      "33": "Rigid A",
+      "34": "Pulse A",
+      "37": "Rigid AB"
+    },
+    "zone": "Zone {n}: {v}",
+    "released": "Released",
+    "pressed": "Fully pressed",
+    "force": "Force {n}",
+    "leftShort": "L2",
+    "rightShort": "R2",
+    "both": "L2 + R2",
+    "link": "Link triggers"
+  },
+  "errors": {
+    "notFound": "No DualSense connected over USB.",
+    "emulatorRunning": "Only an emulated DualSense is visible. Close other controller emulators to use the physical controller.",
+    "driverMissing": "The Periph virtual controller driver is not installed.",
+    "hidHide": "Could not hide the physical controller with HidHide; games may see two controllers.",
+    "disconnected": "The controller was disconnected.",
+    "hidden": "The controller is hidden by HidHide. Add Periph to HidHide's application list, or remove the controller from its device list."
+  },
+  "stage": {
+    "label": "Controller preview",
+    "parts": {
+      "overview": "Controller",
+      "lightbar": "Lightbar",
+      "player": "Player LEDs",
+      "mic": "Mic LED",
+      "triggers": "Adaptive triggers",
+      "l2": "L2 trigger",
+      "r2": "R2 trigger"
+    },
+    "noModel": "Add the 3D model to see the controller here (see assets/NOTICE.md).",
+    "credit": "3D model: “Playstation 5 Dualsense” by AHarmlessPotato (CC BY 4.0)"
+  }
+}

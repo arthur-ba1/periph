@@ -47,7 +47,8 @@ def main():
         else:
             log({"ev": "error", "msg": msg})
 
-    session = frida.attach(a.process)
+    # A PID picks one process when several share a name (e.g. a launcher and the real app).
+    session = frida.attach(int(a.process) if a.process.isdigit() else a.process)
     cfg = json.dumps({"module": a.module or None, "winhid": a.winhid})
     source = open(os.path.join(HERE, "hidhook.js"), encoding="utf-8").read().replace("__CFG__", cfg)
     script = session.create_script(source)

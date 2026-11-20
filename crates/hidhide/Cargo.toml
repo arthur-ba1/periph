@@ -1,0 +1,17 @@
+[package]
+name = "hidhide"
+description = "Client for the HidHide filter driver's control device (hide a physical controller from games while an emulated one is active)."
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_Security",
+] }
