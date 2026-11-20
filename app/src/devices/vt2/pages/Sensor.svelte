@@ -6,15 +6,11 @@
   import PageHeader from "$lib/components/page-header.svelte";
   import SettingRow from "$lib/components/setting-row.svelte";
   import { vt2, send } from "../store.svelte.js";
+  import { t } from "$lib/i18n.svelte.js";
 
   let cfg = $derived(vt2.config);
 
-  const toggles = [
-    { key: "motionSync", title: "Motion Sync", desc: "Sincroniza a leitura do sensor com o polling. Movimento mais consistente, ~1 ms a mais." },
-    { key: "linear", title: "Correção linear", desc: "Angle snapping: endireita traços que deveriam ser retos." },
-    { key: "ripple", title: "Correção de ripple", desc: "Suaviza o ruído do sensor em DPI alto." },
-    { key: "glass", title: "Modo vidro", desc: "Melhora o rastreamento em superfícies de vidro. Desligue em mousepads comuns." },
-  ];
+  const toggles = ["motionSync", "linear", "ripple", "glass"];
 
   function flip(key, v) {
     cfg[key] = v;
@@ -45,15 +41,15 @@
 </script>
 
 {#if cfg}
-  <PageHeader title="Sensor" description="Ajustes de rastreamento e resposta dos botões." />
+  <PageHeader title={t("vt2.sensor.title")} description={t("vt2.sensor.description")} />
 
   <div class="grid gap-4">
     <Card.Root class="py-2">
       <Card.Content>
-        {#each toggles as t, i}
+        {#each toggles as key, i}
           {#if i > 0}<Separator />{/if}
-          <SettingRow title={t.title} description={t.desc}>
-            <Switch checked={cfg[t.key]} onCheckedChange={(v) => flip(t.key, v)} />
+          <SettingRow title={t(`vt2.sensor.${key}`)} description={t(`vt2.sensor.${key}Desc`)}>
+            <Switch checked={cfg[key]} onCheckedChange={(v) => flip(key, v)} />
           </SettingRow>
         {/each}
       </Card.Content>
@@ -62,7 +58,7 @@
     <div class="grid grid-cols-2 gap-4">
       <Card.Root>
         <Card.Header>
-          <Card.Description>Lift-off distance</Card.Description>
+          <Card.Description>{t("vt2.sensor.lod")}</Card.Description>
           <Card.Title class="font-mono text-3xl font-semibold tracking-tight">{lod.toFixed(1)}<span class="text-muted-foreground ml-1 text-base">mm</span></Card.Title>
         </Card.Header>
         <Card.Content class="grid gap-3">
@@ -82,15 +78,15 @@
 
       <Card.Root>
         <Card.Header>
-          <Card.Description>Debounce ao pressionar</Card.Description>
+          <Card.Description>{t("vt2.sensor.debounce")}</Card.Description>
           <Card.Title class="font-mono text-3xl font-semibold tracking-tight">{deb}<span class="text-muted-foreground ml-1 text-base">ms</span></Card.Title>
         </Card.Header>
         <Card.Content class="grid gap-3">
           <div class="text-muted-foreground h-16 text-[13px] leading-snug">
-            Tempo que o mouse espera para confirmar um clique. Valores baixos respondem mais rápido; valores altos evitam duplo clique acidental.
+            {t("vt2.sensor.debounceDesc")}
           </div>
           <Slider type="single" min={0} max={32} step={1} bind:value={deb} onValueCommit={commitDeb} />
-          <div class="text-muted-foreground flex justify-between font-mono text-[11px]"><span>0</span><span>Ao soltar: {cfg.debounceRelease} ms</span><span>32</span></div>
+          <div class="text-muted-foreground flex justify-between font-mono text-[11px]"><span>0</span><span>{t("vt2.sensor.onRelease", { ms: cfg.debounceRelease })}</span><span>32</span></div>
         </Card.Content>
       </Card.Root>
     </div>

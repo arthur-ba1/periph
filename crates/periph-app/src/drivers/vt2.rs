@@ -1,7 +1,7 @@
 //! Rapoo VT2 Max driver (USB 24AE:1423). Protocol: vt2-proto, transport: vt2-device.
 //! Frontend: app/src/devices/vt2/.
 
-use periph_core::{self as core, serde_json::{self, Value}, Connected, DeviceInfo, Driver, Kind, Session, Snapshot, Tray, TrayItem};
+use periph_core::{self as core, serde_json::{self, Value}, t, tf, Absent, Connected, DeviceInfo, Driver, Kind, Session, Snapshot, Tray, TrayItem};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use vt2_device::Vt2;
@@ -84,8 +84,8 @@ fn apply(d: &Vt2, cmd: Cmd) -> anyhow::Result<()> {
         Cmd::Button((i, a)) => {
             // Only allow action shapes seen from the official app.
             match a {
-                ButtonAction::Raw(_) | ButtonAction::Wheel(_) => anyhow::bail!("ação não suportada"),
-                ButtonAction::Key(k) if !(0x04..=0x73).contains(&k) => anyhow::bail!("tecla fora do intervalo"),
+                ButtonAction::Raw(_) | ButtonAction::Wheel(_) => anyhow::bail!(t("vt2.errors.unsupportedAction")),
+                ButtonAction::Key(k) if !(0x04..=0x73).contains(&k) => anyhow::bail!(t("vt2.errors.keyOutOfRange")),
                 _ => {}
             }
             d.set_button(i, a)
@@ -121,7 +121,10 @@ impl Driver for Vt2Driver {
     }
 
     fn open(&self) -> anyhow::Result<(Box<dyn Session>, Connected)> {
-        let d = Vt2::open()?;
+        let d = Vt2::open().map_err(|e| {
+            let code = if e.to_string() == vt2_device::MOUSE_ASLEEP { "asleep" } else { "notFound" };
+            Absent::new(code, e)
+        })?;
         let info = Connected { product: d.product.clone(), serial: d.serial.clone() };
         Ok((Box::new(Vt2Session(d)), info))
     }
@@ -129,35 +132,33 @@ impl Driver for Vt2Driver {
     fn tray(&self, s: &Snapshot) -> Option<Tray> {
         let status: Option<p::Status> = s.status.clone().and_then(|v| serde_json::from_value(v).ok());
         let header = match (&status, s.connected) {
-            (Some(st), _) => format!(
-                "VT2 Max  ·  {}  ·  bateria {}%{}  ·  {} DPI",
-                if st.wired { "cabo" } else { "sem fio" },
-                st.battery,
-                if st.charging { " (carregando)" } else { "" },
-                st.dpi_x,
+            (Some(st), _) => tf(
+                "vt2.tray.header",
+                &[
+                    ("link", &t(if st.wired { "vt2.tray.wired" } else { "vt2.tray.wireless" })),
+                    ("battery", &st.battery),
+                    ("charging", &if st.charging { t("vt2.tray.charging") } else { String::new() }),
+                    ("dpi", &st.dpi_x),
+                ],
             ),
-            (None, true) => "VT2 Max  ·  conectado".into(),
-            (None, false) => "VT2 Max  ·  desconectado".into(),
+            (None, true) => t("vt2.tray.connected"),
+            (None, false) => t("vt2.tray.disconnected"),
         };
         let mut items = Vec::new();
         if let Some(c) = s.config.clone().and_then(|v| serde_json::from_value::<Config>(v).ok()) {
             items.push(TrayItem::Submenu {
-                label: format!("DPI  ·  {}", c.dpi[c.active as usize]),
+                label: t("vt2.tray.dpi"),
                 items: (0..c.stage_count)
-                    .map(|i| TrayItem::Check {
-                        id: format!("stage:{i}"),
-                        label: format!("Estágio {}  ·  {} DPI", i + 1, c.dpi[i]),
-                        checked: c.active as usize == i,
-                    })
+                    .map(|i| TrayItem::Check { id: format!("stage:{i}"), label: c.dpi[i].to_string(), checked: c.active as usize == i })
                     .collect(),
             });
             items.push(TrayItem::Submenu {
-                label: format!("Polling rate  ·  {}", fmt_hz(c.polling)),
+                label: t("vt2.tray.polling"),
                 items: POLLING.iter().map(|&hz| TrayItem::Check { id: format!("poll:{hz}"), label: fmt_hz(hz), checked: c.polling == hz }).collect(),
             });
-            items.push(TrayItem::Check { id: "motion".into(), label: "Motion Sync".into(), checked: c.motion_sync });
-            items.push(TrayItem::Check { id: "glass".into(), label: "Modo vidro".into(), checked: c.glass });
-            items.push(TrayItem::Action { id: "refresh".into(), label: "Reler configuração do mouse".into() });
+            items.push(TrayItem::Check { id: "motion".into(), label: t("vt2.tray.motionSync"), checked: c.motion_sync });
+            items.push(TrayItem::Check { id: "glass".into(), label: t("vt2.tray.glass"), checked: c.glass });
+            items.push(TrayItem::Action { id: "refresh".into(), label: t("vt2.tray.refresh") });
         }
         Some(Tray { header, battery: status.map(|s| (s.battery, s.charging)), items })
     }

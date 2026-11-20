@@ -98,16 +98,22 @@ own I/O) to `crates/periph-app/Cargo.toml`, and register it in `drivers/mod.rs`.
 2. Add one write command at a time. After each: change it in Periph, close Periph, open the
    vendor app, confirm the same value is shown. Then the reverse direction.
 3. `poll` for battery/live status if the device sends status reports; `tray` + `tray_command`
-   if quick toggles make sense (see `drivers/vt2.rs`).
-4. `open()` errors are shown to the user: make them short and in Portuguese
-   ("não encontrado", "o mouse não respondeu (dormindo?)").
+   for the tray flyout's quick settings if they make sense (see `drivers/vt2.rs`).
+4. `open()` errors: wrap known states in `Absent::new("notFound" | "asleep" | ..., e)` so the
+   UI shows a translated explanation; other technical errors stay in English.
 
 ## Step 6: UI module
 
 Copy `templates/module/` to `app/src/devices/<id>/` (rename ids and names). One tab per group
 of settings; reuse `$lib/components/ui/*`, `$lib/components/page-header.svelte` and
 `setting-row.svelte`; look at `devices/vt2/pages/` for patterns (sliders with apply buttons,
-toggle groups, confirmation before risky remaps like the primary button). UI copy in pt-BR.
+toggle groups, confirmation before risky remaps like the primary button).
+
+- All text through `t("<id>.…")`, with keys in `locales/en.json` and every other language
+  present in `app/src/locales/` (currently `pt-BR`). Translate them yourself; if unsure of a
+  term, keep the English and tell the user. Driver text (tray, errors) uses the same keys via
+  `periph_core::t`. Known absent states return `periph_core::Absent::new(code, e)` and the
+  module's `waiting()` branches on `dev.code`. See `docs/translating.md`.
 
 - `demo.state` must be realistic (use values from the capture) and `demo.apply` must mirror
   every command, so the whole UI works at `http://localhost:5173/?demo`.
@@ -122,5 +128,9 @@ its `assets/` folder empty.
 ## Step 7: Finish
 
 Run the checklist at the end of `docs/adding-a-device.md`: `cargo test --workspace`,
-`npm --prefix app run build`, real-device round trips, protocol doc, README device list. Tell
+`npm --prefix app run build`, `npm --prefix app run check:i18n`, real-device round trips,
+protocol doc, the device list in both READMEs.
+
+Commit messages carry no `Co-Authored-By:` or "Generated with Claude Code" lines (the repo's
+commit-msg hook and CI reject them). Tell
 the user exactly what was verified on hardware and what was only verified in demo mode.

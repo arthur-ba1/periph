@@ -1,10 +1,10 @@
 <script>
   // One adaptive trigger (L2 or R2), or both at once when linked: mode, parameters, zone
-  // preview and the override switch.
+  // preview, and a note when the game controls the triggers while emulating.
   import * as Card from "$lib/components/ui/card/index.js";
   import * as Select from "$lib/components/ui/select/index.js";
   import { Slider } from "$lib/components/ui/slider/index.js";
-  import OverrideNote from "./override-note.svelte";
+  import SourceNote from "./source-note.svelte";
   import { ds, send, flashPart, partOf, TRIGGER_MODES, TRIGGER_PARAMS, CUSTOM_MODES, withParam, zonesOf } from "./store.svelte.js";
   import { t } from "$lib/i18n.svelte.js";
 
@@ -58,7 +58,7 @@
 <Card.Root class="min-w-0">
   <Card.Content class="grid gap-4">
     {#if kind !== "none"}
-      <OverrideNote checked={trig.override} onchange={(v) => commit({ ...trig, override: v })} />
+      <SourceNote category="triggers" />
     {/if}
     <Select.Root type="single" value={kind} onValueChange={setMode}>
       <Select.Trigger class="w-full" aria-label={t("dualsense.triggers.mode")}>{kind === "none" ? t("dualsense.triggers.none") : modeLabel(kind)}</Select.Trigger>

@@ -108,9 +108,10 @@ Bluetooth pad reads feature 0x05 once to enable full input reports. Framing:
   next `poll()` fail and end the session).
 - **Worker `poll()`**, every 4 ms while emulating (100 ms otherwise):
   1. drain the status handle (battery from byte 53; an error means the pad is gone);
-  2. drain the kernel output FIFO and, if `forwardFeedback`, write each report verbatim and in
-     order to the physical pad;
-  3. feed each report to `RumbleWatchdog`; on expiry send `OutputReport::rumble_stop()`;
+  2. drain the kernel output FIFO; for each report, in order: drop what `feedback` keeps from
+     the game (`Feedback::filter`), write Periph's kept sections over it, and send it to the
+     physical pad unless nothing is left flagged;
+  3. feed each (filtered) report to `RumbleWatchdog`; on expiry send `OutputReport::rumble_stop()`;
   4. emit status through `StatusThrottle` (visible changes at once, counters at most every
      250 ms; `periph-core` emits an event for every `Some`).
 
@@ -126,9 +127,9 @@ when the channel handle closes, covering crashes.
 
 ### 5.4 Commands
 
-`refresh`, `emulation(on)`, `forwardFeedback(on)` (turning it off also stops running motors),
-`hidePhysical(on)` (applies at once while emulating). Config is per session: on reconnect it
-starts again as `{ emulation: false, forwardFeedback: true, hidePhysical: true }`.
+`refresh`, `emulation(on)`, `feedback({ lights, haptics, triggers })` (turning haptics off also
+stops running motors), `hidePhysical(on)` (applies at once while emulating), plus the effect
+sections. Everything but `emulation` is saved; emulation always starts off.
 
 ---
 
@@ -153,10 +154,14 @@ rumble and the pad stops early, the window is what to raise.
 
 ### 6.3 Lightbar, player LEDs, mic LED, adaptive triggers
 
-Same path, forwarded verbatim (bytes 44–47, 9, 43, 39; trigger blocks at 11 and 22). With
-`forwardFeedback = false` all output sections are suppressed together; per-section forwarding
-would use the `OutputReport` accessors. The virtual device cannot emulate trigger resistance
-itself: forwarding the game's trigger block is what makes the effect reach the real pad.
+Same path (bytes 44–47, 9, 43, 39; trigger blocks at 11 and 22). The user picks a source per
+category in the Emulation page (`config.feedback`): lights and triggers go to the game or to
+Periph, the game's vibration is forwarded or dropped. A category kept for Periph has its valid
+bits cleared in every game report (`OutputReport::drop_lights` / `drop_triggers` /
+`drop_rumble`) and Periph's sections are written instead; a category left to the game passes
+through, and Periph fills only the sections the game never set. The virtual device cannot
+emulate trigger resistance itself: forwarding the game's trigger block is what makes the
+effect reach the real pad.
 
 ### 6.4 Feature reports
 

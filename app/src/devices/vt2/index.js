@@ -7,30 +7,27 @@ import Card from "./Card.svelte";
 import Badges from "./Badges.svelte";
 import Hero from "./Hero.svelte";
 import { demo } from "./store.svelte.js";
+import { t } from "$lib/i18n.svelte.js";
 
 export default {
   id: "vt2",
   name: "Rapoo VT2 Max",
-  kind: "Mouse",
+  kind: "mouse",
   icon: "mouse",
   order: 1,
   tabs: [
-    { label: "DPI", icon: "dpi", page: Dpi },
-    { label: "Desempenho", icon: "performance", page: Performance },
-    { label: "Sensor", icon: "sensor", page: Sensor },
-    { label: "Botões", icon: "buttons", page: Buttons },
-  ],
+    { key: "dpi", icon: "dpi", page: Dpi },
+    { key: "performance", icon: "performance", page: Performance },
+    { key: "sensor", icon: "sensor", page: Sensor },
+    { key: "buttons", icon: "buttons", page: Buttons },
+  ].map((tab) => ({ ...tab, get label() { return t(`vt2.tabs.${tab.key}`); } })),
   Card,
   Badges,
   Layer: Hero,
   /** Text for the "waiting" screen while the device is absent. */
   waiting(d) {
-    if ((d.reason ?? "").includes("dormindo"))
-      return { title: "O mouse está dormindo", text: "O dongle está conectado, mas o mouse não respondeu. Mexa ou clique no mouse para acordá-lo; o app tenta de novo sozinho.", hideReason: true };
-    return {
-      title: d.connected ? "Lendo configuração…" : "Procurando o VT2 Max",
-      text: "Conecte o dongle ou o cabo. Se o A HUB estiver aberto, feche-o, porque os dois não podem usar o mouse ao mesmo tempo.",
-    };
+    if (d.code === "asleep") return { title: t("vt2.waiting.asleepTitle"), text: t("vt2.waiting.asleepText"), hideReason: true };
+    return { title: t(d.connected ? "vt2.waiting.reading" : "vt2.waiting.searching"), text: t("vt2.waiting.text") };
   },
   demo,
 };

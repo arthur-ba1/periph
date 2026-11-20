@@ -1,53 +1,66 @@
 # Periph
 
-App aberto (Rust + Tauri 2 + Svelte 5) para configurar periféricos sem o software do fabricante.
-Cada dispositivo é uma implementação plugável: um driver em Rust e um módulo de interface em
-Svelte. Qualquer pessoa pode adicionar o próprio mouse, teclado ou outro periférico.
+**English** · [Português (Brasil)](README.pt-BR.md)
 
-## Dispositivos suportados
-| Dispositivo | Id | O que dá para configurar |
+An open app (Rust + Tauri 2 + Svelte 5) to configure computer peripherals without the
+manufacturer's software. Each device is a pluggable implementation: a Rust driver plus a Svelte
+UI module. Anyone can add their own mouse, keyboard or other peripheral.
+
+## Supported devices
+| Device | Id | What you can configure |
 | --- | --- | --- |
-| **Rapoo VT2 Max** (USB `24AE:1423` dongle, `24AE:4623` cabo) | `vt2` | DPI e estágios, polling rate, LOD, motion sync, linear/ripple, modo vidro, debounce, botões, bateria |
-| **Teclados VIA** (ex.: AKKO 5075) | `via` | keymap por camada (com knob), iluminação RGB |
+| **Rapoo VT2 Max** (USB `24AE:1423` dongle, `24AE:4623` cable) | `vt2` | DPI stages, polling rate, lift-off distance, motion sync, linear/ripple correction, glass mode, debounce, buttons, battery |
+| **VIA keyboards** (e.g. AKKO 5075) | `via` | per-layer keymap (with knob), RGB lighting |
 
-Para um teclado VIA novo basta colocar a definição JSON em `app/src/devices/via/keyboards/`
-(o repositório traz só uma definição de exemplo; confira a licença antes de commitar a de outro teclado).
+For a new VIA keyboard, drop its JSON definition into `app/src/devices/via/keyboards/` (the
+repository only ships an example definition; check the license before committing another one).
 
-## Adicionar um dispositivo
-- Guia: [docs/adding-a-device.md](docs/adding-a-device.md) (contrato do driver e do módulo)
-- Método de engenharia reversa: [docs/reverse-engineering.md](docs/reverse-engineering.md)
-- Para agentes de IA (Claude Code, Codex, etc.): skill em
-  [.claude/skills/add-device/SKILL.md](.claude/skills/add-device/SKILL.md), com templates prontos.
-  Veja também [AGENTS.md](AGENTS.md).
+## Adding a device
+- Guide: [docs/adding-a-device.md](docs/adding-a-device.md) (driver and module contract)
+- Reverse-engineering method: [docs/reverse-engineering.md](docs/reverse-engineering.md)
+- For AI agents (Claude Code, Codex, ...): the skill at
+  [.claude/skills/add-device/SKILL.md](.claude/skills/add-device/SKILL.md), with ready templates.
+  See also [AGENTS.md](AGENTS.md).
 
-## Estrutura
-- `crates/periph-core`: contrato `Driver`/`Session` e o loop genérico de cada dispositivo
-- `crates/periph-app`: o app Tauri (`periph.exe`); drivers em `src/drivers/`, bandeja genérica
-- `crates/vt2-proto`, `crates/vt2-device`: protocolo e transporte do VT2 Max ([docs/protocol.md](docs/protocol.md))
-- `crates/via`: protocolo VIA
-- `crates/vt2-probe`: descoberta HID somente leitura; `crates/vt2-cli`: CLI do VT2 Max
-- `app/src/devices/<id>/`: módulos de interface, descobertos automaticamente
-- `tools/`: hook Frida, resumo de logs, extração de recursos
+## Languages
+The UI, the tray and the messages are available in English and Brazilian Portuguese. The
+language follows the system and can be changed in the title bar. To add a language, see
+[docs/translating.md](docs/translating.md).
 
-## Compilar
+## Layout
+- `crates/periph-core`: the `Driver`/`Session` contract, the per-device worker loop, i18n
+- `crates/periph-app`: the Tauri app (`periph.exe`); drivers in `src/drivers/`, generic tray
+- `crates/vt2-proto`, `crates/vt2-device`: VT2 Max protocol and transport ([docs/protocol.md](docs/protocol.md), in Portuguese)
+- `crates/via`: VIA protocol
+- `crates/vt2-probe`: read-only HID discovery; `crates/vt2-cli`: VT2 Max command line
+- `app/src/devices/<id>/`: UI modules, discovered automatically
+- `tools/`: Frida HID hook, log summarizer, resource extractors
+
+## Build
 ```
 npm --prefix app install
-npm --prefix app run build            # gera app/dist (embutido no exe)
+npm --prefix app run build            # builds app/dist (embedded in the exe)
 cargo build --release -p periph-app   # target\release\periph.exe
-target\release\periph.exe --tray      # inicia só na bandeja
-npm --prefix app run dev              # só a interface, sem hardware: http://localhost:5173/?demo
+target\release\periph.exe --tray      # start in the tray only
+npm --prefix app run dev              # UI only, no hardware: http://localhost:5173/?demo
 cargo test --workspace
 ```
-- Fechar a janela só a esconde na bandeja. A bandeja mostra a bateria e controles rápidos de cada dispositivo.
-- Feche o software oficial antes de usar o Periph: os dois não podem usar o canal HID ao mesmo tempo.
-- Ícone: `crates/periph-app/app-icon.svg`. Para regenerar: `npx --prefix app tauri icon crates/periph-app/app-icon.svg -o crates/periph-app/icons`
+- Closing the window only hides it to the tray. Each connected device gets its own tray icon with its battery: left click opens its quick settings, double click opens it in Periph and right click shows the menu.
+- Close the official software before using Periph: both can't use the HID channel at the same time.
+- Icon: `crates/periph-app/app-icon.svg`. To regenerate: `npx --prefix app tauri icon crates/periph-app/app-icon.svg -o crates/periph-app/icons`
 
-## Imagens dos fabricantes
-Os renders dos produtos pertencem aos fabricantes e não estão no repositório. Cada módulo
-funciona sem eles (mostra um contorno neutro) e explica em `app/src/devices/<id>/assets/NOTICE.md`
-como extraí-los do seu próprio software oficial, para uso local.
+## Contributing
+- Enable the repository hook once per clone: `git config core.hooksPath .githooks`. It rejects
+  commits containing `Co-Authored-By:` or "Generated with Claude Code"; CI runs the same check.
+- Before opening a PR: `cargo test --workspace`, `npm --prefix app run build` and
+  `npm --prefix app run check:i18n`.
 
-## CLI do VT2 Max
+## Vendor artwork
+Product renders belong to their manufacturers and are not in the repository. Every module works
+without them (it shows a neutral outline) and explains in `app/src/devices/<id>/assets/NOTICE.md`
+how to extract them from your own copy of the official software, for local use.
+
+## VT2 Max command line
 ```
 cargo build --release -p vt2-cli
 target\release\vt2 info
@@ -57,13 +70,13 @@ target\release\vt2 dpi 2 800
 target\release\vt2 button back key:f13
 ```
 
-## Regras de segurança
-- Só enviar comandos de escrita no formato que o app oficial usa (verificado por testes contra bytes capturados).
-- Sem fuzzing de comandos de escrita e sem atualização de firmware, bootloader ou reset de fábrica.
-- Ferramentas de descoberta só leem.
+## Safety rules
+- Only send write commands in the exact format the official app uses (verified by tests against captured bytes).
+- No fuzzing of write commands, no firmware, bootloader or factory-reset commands.
+- Discovery tools only read.
 
-## Pendências
-- [ ] VT2 Max: macros, factory reset, sleep time (ainda não capturados)
+## To do
+- [ ] VT2 Max: macros, factory reset, sleep time (not captured yet)
 
-## Licença
-MIT. Veja [LICENSE](LICENSE).
+## License
+MIT. See [LICENSE](LICENSE).

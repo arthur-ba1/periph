@@ -47,7 +47,7 @@ impl Keyboard {
         let info = api
             .device_list()
             .find(|d| d.usage_page() == USAGE_PAGE && d.usage() == USAGE)
-            .context("nenhum teclado VIA encontrado")?;
+            .context("no VIA keyboard found")?;
         Ok(Self {
             dev: info.open_device(&api).context("open VIA interface")?,
             vendor_id: info.vendor_id(),
@@ -72,17 +72,17 @@ impl Keyboard {
         for _ in 0..16 {
             let n = self.dev.read_timeout(&mut buf, 500)?;
             if n == 0 {
-                bail!("o teclado não respondeu ao comando 0x{:02X}", payload[0]);
+                bail!("the keyboard did not answer command 0x{:02X}", payload[0]);
             }
             // QMK only overwrites byte 0 with 0xFF; the params stay in place
             if buf[0] == id::UNHANDLED && buf[1..echo] == payload[1..echo] {
-                bail!("comando 0x{:02X} não suportado pelo firmware", payload[0]);
+                bail!("command 0x{:02X} not supported by the firmware", payload[0]);
             }
             if buf[..echo] == payload[..echo] {
                 return Ok(buf);
             }
         }
-        bail!("resposta inesperada ao comando 0x{:02X} (outro programa usando o teclado?)", payload[0])
+        bail!("unexpected answer to command 0x{:02X} (another program using the keyboard?)", payload[0])
     }
 
     pub fn protocol_version(&self) -> Result<u16> {
@@ -131,13 +131,13 @@ impl Keyboard {
     /// Set a keycode and read it back to confirm.
     pub fn set_keycode(&self, layer: u8, row: u8, col: u8, code: u16) -> Result<()> {
         if is_dangerous_keycode(code) {
-            bail!("keycode 0x{code:04X} bloqueado (bootloader/limpar EEPROM)");
+            bail!("keycode 0x{code:04X} is blocked (bootloader/EEPROM reset)");
         }
         let [hi, lo] = code.to_be_bytes();
         self.query(&[id::DYNAMIC_KEYMAP_SET_KEYCODE, layer, row, col, hi, lo])?;
         let back = self.keycode(layer, row, col)?;
         if back != code {
-            bail!("o teclado guardou 0x{back:04X} em vez de 0x{code:04X}");
+            bail!("the keyboard stored 0x{back:04X} instead of 0x{code:04X}");
         }
         Ok(())
     }
@@ -150,13 +150,13 @@ impl Keyboard {
 
     pub fn set_encoder(&self, layer: u8, encoder: u8, clockwise: bool, code: u16) -> Result<()> {
         if is_dangerous_keycode(code) {
-            bail!("keycode 0x{code:04X} bloqueado (bootloader/limpar EEPROM)");
+            bail!("keycode 0x{code:04X} is blocked (bootloader/EEPROM reset)");
         }
         let [hi, lo] = code.to_be_bytes();
         self.query(&[id::DYNAMIC_KEYMAP_SET_ENCODER, layer, encoder, clockwise as u8, hi, lo])?;
         let back = self.encoder(layer, encoder, clockwise)?;
         if back != code {
-            bail!("o encoder guardou 0x{back:04X} em vez de 0x{code:04X}");
+            bail!("the encoder stored 0x{back:04X} instead of 0x{code:04X}");
         }
         Ok(())
     }

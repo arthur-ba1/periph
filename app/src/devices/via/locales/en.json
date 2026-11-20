@@ -1,0 +1,87 @@
+{
+  "name": "VIA keyboard",
+  "tabs": { "keymap": "Keymap", "lighting": "Lighting" },
+  "waiting": {
+    "noDefinitionTitle": "VIA keyboard without a definition",
+    "noDefinitionText": "Found {product} (VID {vid}, PID {pid}), but there is no VIA definition file for it in app/src/devices/via/keyboards/.",
+    "aKeyboard": "a keyboard",
+    "reading": "Reading the keyboard…",
+    "searching": "Looking for a VIA keyboard",
+    "text": "Connect the keyboard with the USB cable. If the VIA website (usevia.app) is open, close the tab, since both can't use the keyboard at the same time."
+  },
+  "card": { "online": "Online", "searching": "Searching", "layers": "VIA v{protocol} · {layers} layers" },
+  "badges": { "layers": "{n} layers" },
+  "keymap": {
+    "title": "Keymap",
+    "description": "Pick a layer, click a key and choose what it does. Writes straight to the keyboard.",
+    "layersInfo": "{n} layers · layer 0 is the base; the others are reached with layer keys (like Fn).",
+    "layer": "Layer {n}",
+    "selected": "Layer {layer} · key {key}",
+    "knobPress": "Press the knob",
+    "knobCcw": "Turn ↺ ({key})",
+    "knobCw": "Turn ↻ ({key})",
+    "record": "Record a key",
+    "transparent": "Transparent",
+    "none": "None",
+    "hint": "Click a key to edit it. Tip: {symbol} is transparent, so the key uses whatever the layer below has.",
+    "knobTitle": "Press: {press} · ↺ {ccw} · ↻ {cw}"
+  },
+  "lighting": {
+    "title": "Lighting",
+    "description": "Brightness, effect, speed and color settings are saved on the keyboard.",
+    "duel": {
+      "title": "Color duel",
+      "description": "Press or click keys to make their side’s color advance in the preview.",
+      "left": "Left color",
+      "right": "Right color",
+      "wheel": "Color wheel",
+      "wheelHelp": "Use the left and right arrows to adjust hue and the up and down arrows to adjust saturation."
+    },
+    "word": {
+      "title": "Word",
+      "description": "The preview lights one key at a time and repeats the sequence.",
+      "missing": "No matching key on the base layer for {keys}."
+    },
+    "hue": "Hue",
+    "saturation": "Saturation",
+    "labels": { "Backlight": "Backlight", "Brightness": "Brightness", "Effect": "Effect", "Effect Speed": "Effect speed", "Color": "Color" },
+    "effects": {
+      "All Off": "Off", "SOLID_COLOR": "Solid color", "BREATHING": "Breathing", "CYCLE_ALL": "Color cycle",
+      "CYCLE_LEFT_RIGHT": "Cycle left → right", "CYCLE_UP_DOWN": "Cycle top → bottom", "RAINBOW_MOVING_CHEVRON": "Rainbow chevron",
+      "CYCLE_OUT_IN": "Cycle outside in", "CYCLE_OUT_IN_DUAL": "Dual cycle outside in", "CYCLE_PINWHEEL": "Pinwheel",
+      "CYCKE_SPIRAL": "Spiral", "CYCLE_SPIRAL": "Spiral", "DUAL_BEACON": "Dual beacon", "RAINBOW_BEACON": "Rainbow beacon",
+      "RAINDROPS": "Raindrops", "TYPING_HEATMAP": "Typing heatmap", "SOLID_REACTIVE_SIMPLE": "Reactive (simple)",
+      "SOLID_REACTIVE": "Reactive", "SOLID_REACTIVE_CROSS": "Reactive cross", "MATRIX_MULTISPLASH": "Multisplash"
+    }
+  },
+  "keycodes": {
+    "none": "None", "transparent": "Transparent (uses the layer below)", "space": "Space", "spaceShort": "Space",
+    "right": "Right arrow", "left": "Left arrow", "down": "Down arrow", "up": "Up arrow", "menu": "Context menu",
+    "power": "Power off", "sleep": "Sleep", "wake": "Wake", "mute": "Mute", "next": "Next track", "prev": "Previous track",
+    "stop": "Stop", "select": "Media select", "eject": "Eject", "mail": "Mail", "calc": "Calculator", "pc": "My computer",
+    "search": "Search", "home": "Home page", "webBack": "Browser: back", "webFwd": "Browser: forward",
+    "webStop": "Browser: stop", "webReload": "Browser: reload", "favorites": "Favorites", "ff": "Fast forward",
+    "rew": "Rewind", "briUp": "Screen brightness +", "briDown": "Screen brightness −", "controlPanel": "Control panel",
+    "assistant": "Assistant",
+    "msUp": "Mouse: up", "msDown": "Mouse: down", "msLeft": "Mouse: left", "msRight": "Mouse: right", "msBtn": "Mouse: button {n}",
+    "whUp": "Wheel: up", "whDown": "Wheel: down", "whLeft": "Wheel: left", "whRight": "Wheel: right",
+    "lctrl": "Left Ctrl", "lshift": "Left Shift", "lalt": "Left Alt", "lwin": "Left Win",
+    "rctrl": "Right Ctrl", "rshift": "Right Shift", "ralt": "Right Alt", "rwin": "Right Win",
+    "rgbToggle": "Lighting on/off", "rgbNext": "Next effect", "rgbPrev": "Previous effect", "hueUp": "Hue +", "hueDown": "Hue −",
+    "satUp": "Saturation +", "satDown": "Saturation −", "valUp": "LED brightness +", "valDown": "LED brightness −", "spdUp": "Speed +", "spdDown": "Speed −",
+    "rgbNextShort": "Mode+", "rgbPrevShort": "Mode−", "hueUpShort": "Hue+", "hueDownShort": "Hue−", "satUpShort": "Sat+", "satDownShort": "Sat−",
+    "valUpShort": "Bri+", "valDownShort": "Bri−", "spdUpShort": "Spd+", "spdDownShort": "Spd−",
+    "winLock": "Win key lock",
+    "layerTap": "Hold: layer {layer} · Tap: {key}",
+    "to": "Go to layer {n}", "mo": "Hold: layer {n}", "df": "Default layer {n}", "tg": "Toggle layer {n}",
+    "osl": "One-shot layer {n}", "tt": "Tap/hold layer {n}",
+    "macro": "Macro {n}", "kbFunction": "Keyboard function {n}", "fwFunction": "Firmware function {n}", "system": "System function (blocked)"
+  },
+  "categories": {
+    "basic": "Basic", "letters": "Letters", "numbers": "Numbers and symbols", "control": "Control", "modifiers": "Modifiers",
+    "functions": "Functions", "numpad": "Numpad", "media": "Media", "audio": "Audio and media", "system": "System", "mouse": "Mouse",
+    "layers": "Layers", "hold": "Hold (MO)", "toggle": "Toggle (TG)", "goto": "Go to (TO)", "lighting": "Lighting",
+    "special": "Special", "keyboard": "Keyboard", "macros": "Macros"
+  },
+  "errors": { "disconnected": "keyboard disconnected" }
+}

@@ -19,13 +19,13 @@ mod effects;
 use anyhow::{Context, Result};
 use dualsense_proto::bluetooth;
 use dualsense_proto::feature::{FeatureResponse, FeatureSet};
-use dualsense_proto::input::InputReport;
+use dualsense_proto::input::{Buttons, InputReport};
 use dualsense_proto::effects::SectionFlags;
 use dualsense_proto::output::OutputReport;
 use dualsense_proto::{PID, VID};
 use dualsense_vpad::Channel;
 use hidapi::{HidApi, HidDevice};
-use periph_core::{self as core, serde_json::{self, Value}, t, Absent, Connected, DeviceInfo, Driver, Kind, Session};
+use periph_core::{self as core, serde_json::{self, Value}, t, tf, Absent, Connected, DeviceInfo, Driver, Kind, Session, Snapshot, Tray, TrayColor, TrayItem};
 use serde::{Deserialize, Serialize};
 use std::ffi::CString;
 use std::path::PathBuf;
@@ -38,13 +38,15 @@ use std::time::{Duration, Instant};
 const RUMBLE_WATCHDOG: Duration = Duration::from_secs(5);
 /// Minimum spacing of status events sent to the UI (unless something visible changed).
 const STATUS_INTERVAL: Duration = Duration::from_millis(250);
+const INPUT_INTERVAL: Duration = Duration::from_millis(16);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase")]
 pub enum Cmd {
     Refresh,
     Emulation(bool),
-    ForwardFeedback(bool),
+    /// What of the game's feedback reaches the pad (lights / haptics / triggers).
+    Feedback(effects::Feedback),
     HidePhysical(bool),
     Lightbar(effects::Lightbar),
     PlayerLeds(effects::PlayerLeds),
@@ -58,7 +60,10 @@ pub enum Cmd {
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
     pub emulation: bool,
-    pub forward_feedback: bool,
+    pub feedback: effects::Feedback,
+    /// Older configs: one switch for all feedback (`false` = forward nothing). Read once.
+    #[serde(skip_serializing)]
+    forward_feedback: Option<bool>,
     /// Hide the physical pad with HidHide while emulating (only if HidHide is installed).
     pub hide_physical: bool,
     #[serde(flatten)]
@@ -67,7 +72,13 @@ pub struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self { emulation: false, forward_feedback: true, hide_physical: true, effects: effects::Effects::default() }
+        Self {
+            emulation: false,
+            feedback: effects::Feedback::default(),
+            forward_feedback: None,
+            hide_physical: true,
+            effects: effects::Effects::default(),
+        }
     }
 }
 
@@ -83,10 +94,16 @@ fn load_config() -> Config {
         .and_then(|s| serde_json::from_str(&s).ok())
         .unwrap_or_default();
     c.emulation = false;
+    if c.forward_feedback.take() == Some(false) {
+        c.feedback = effects::Feedback::NONE;
+    }
     // Drop anything a hand-edited file could hold outside the allowed ranges.
     let fx = &mut c.effects;
     if fx.lightbar.validate().is_err() {
         fx.lightbar = effects::Lightbar::default();
+    }
+    if fx.mic_led.validate().is_err() {
+        fx.mic_led = effects::MicLed::default();
     }
     if fx.player_leds.validate().is_err() {
         fx.player_leds = effects::PlayerLeds::default();
@@ -128,6 +145,52 @@ pub struct Status {
     pub battery_raw: u8,
     pub output_reports: u64,
     pub hid_hide: HidHideState,
+    pub controls: Option<Controls>,
+    pub lights: Shown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct Controls {
+    buttons: Buttons,
+    sticks: (u8, u8, u8, u8),
+    triggers: (u8, u8),
+    touches: [Option<[u16; 2]>; 2],
+}
+
+/// Preserve taps that begin and end between two preview polls.
+#[derive(Default)]
+struct PreviewReports {
+    latest: Option<InputReport>,
+    pressed: [u8; 3],
+    direction: Option<u8>,
+}
+
+impl PreviewReports {
+    fn push(&mut self, report: InputReport) {
+        self.pressed[0] |= report.raw[8] & 0xf0;
+        self.pressed[1] |= report.raw[9];
+        self.pressed[2] |= report.raw[10] & 0x07;
+        let direction = report.raw[8] & 0x0f;
+        if direction < 8 {
+            self.direction = Some(direction);
+        }
+        self.latest = Some(report);
+    }
+
+    fn finish(self) -> Option<(u8, Controls)> {
+        let mut report = self.latest?;
+        let battery = report.battery_raw();
+        report.raw[8] = self.pressed[0] | self.direction.unwrap_or(8);
+        report.raw[9..11].copy_from_slice(&self.pressed[1..]);
+        let axis = |v: u8| if v.abs_diff(128) <= 5 { 128 } else { v };
+        let (lx, ly, rx, ry) = report.sticks();
+        Some((battery, Controls {
+            buttons: report.buttons(),
+            sticks: (axis(lx), axis(ly), axis(rx), axis(ry)),
+            triggers: report.triggers(),
+            touches: report.touches(),
+        }))
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -300,6 +363,36 @@ struct PhysicalPad {
     transport: Transport,
     instance_id: Option<String>,
     product: String,
+    /// What the controller is showing, from every report written to it.
+    shown: Shown,
+}
+
+/// Lights as last written to the physical pad (by Periph or by the game), for the UI: the
+/// software shows exactly what the controller shows. `None`: not written this connection.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Shown {
+    lightbar: Option<[u8; 3]>,
+    /// (LED mask, brightness 0 high – 2 low)
+    player_leds: Option<(u8, u8)>,
+    /// 0 off, 1 on, 2 the LED's own pulse
+    mic_led: Option<u8>,
+}
+
+impl Shown {
+    fn observe(&mut self, report: &OutputReport) {
+        let flags = SectionFlags::of(report);
+        if flags.lightbar {
+            let (r, g, b) = report.lightbar_rgb();
+            self.lightbar = Some([r, g, b]);
+        }
+        if flags.player_leds {
+            self.player_leds = Some((report.player_leds() & 0x1F, report.led_brightness()));
+        }
+        if flags.mic_led {
+            self.mic_led = Some(report.mic_led());
+        }
+    }
 }
 
 impl PhysicalPad {
@@ -341,6 +434,7 @@ impl PhysicalPad {
                 transport,
                 instance_id: instance_id_from_hid_path(&path).map(|id| canonical_instance_id(&id)),
                 product: d.product_string().unwrap_or("DualSense").to_string(),
+                shown: Shown::default(),
             });
         }
         if saw_virtual {
@@ -349,23 +443,25 @@ impl PhysicalPad {
         Err(Absent::new("notFound", t("dualsense.errors.notFound")).into())
     }
 
-    /// Drains pending input on the status handle; returns the newest report, if any.
-    fn drain_input(&mut self) -> Result<Option<InputReport>> {
-        let mut latest = None;
+    /// Samples pending input on the status handle independently of the forwarder.
+    fn drain_input(&mut self) -> Result<Option<(u8, Controls)>> {
+        let mut reports = PreviewReports::default();
         let mut buf = [0u8; READ_BUF];
         loop {
             let n = self.dev.read(&mut buf).map_err(|e| anyhow::anyhow!(e).context(t("dualsense.errors.disconnected")))?;
             if n == 0 {
-                return Ok(latest);
+                return Ok(reports.finish());
             }
             if let Some(report) = self.transport.input(&buf[..n]) {
-                latest = Some(report);
+                reports.push(report);
             }
         }
     }
 
     fn write_output(&mut self, report: &OutputReport) -> Result<()> {
-        self.transport.write(&self.dev, report)
+        self.transport.write(&self.dev, report)?;
+        self.shown.observe(report);
+        Ok(())
     }
 
     /// Feature responses for the virtual (USB) device, in USB form whatever the transport.
@@ -429,6 +525,8 @@ impl StatusThrottle {
             Some((at, prev)) => {
                 prev.virtual_active != status.virtual_active
                     || prev.hid_hide != status.hid_hide
+                    || prev.controls != status.controls
+                    || prev.lights != status.lights
                     || (prev != &status && now.duration_since(*at) >= STATUS_INTERVAL)
             }
         };
@@ -560,6 +658,8 @@ struct DualSenseSession<C: SessionChannel> {
     watchdog: RumbleWatchdog,
     throttle: StatusThrottle,
     battery_raw: u8,
+    controls: Option<Controls>,
+    last_input: Option<Instant>,
     output_count: u64,
     /// Periph's own lightbar / LED / trigger effects and how they share the pad with games.
     fx: effects::Engine,
@@ -576,14 +676,16 @@ impl<C: SessionChannel> DualSenseSession<C> {
             watchdog: RumbleWatchdog::default(),
             throttle: StatusThrottle::default(),
             battery_raw: 0,
+            controls: None,
+            last_input: None,
             output_count: 0,
             fx: effects::Engine::default(),
         }
     }
 
-    /// Emulation is on and the game's feedback reaches the pad (so the game can own sections).
+    /// Emulation is on, so the game can own the sections of categories left to it.
     fn game_forwarding(&self) -> bool {
-        self.emulation.is_some() && self.config.forward_feedback
+        self.emulation.is_some()
     }
 
     /// Replaces one trigger's setting; a trigger Periph stops controlling goes back to off.
@@ -610,7 +712,7 @@ impl<C: SessionChannel> DualSenseSession<C> {
         // Virtual pad first, then unhide: games briefly see no pad rather than two.
         let was_emulating = self.emulation.take().is_some();
         self.unhide();
-        if self.watchdog.take_running() && self.config.forward_feedback {
+        if self.watchdog.take_running() {
             let _ = self.pad.write_output(&OutputReport::rumble_stop());
         }
         if was_emulating {
@@ -676,11 +778,12 @@ impl<C: SessionChannel> Session for DualSenseSession<C> {
                 self.stop_emulation();
                 self.config.emulation = false;
             }
-            Cmd::ForwardFeedback(on) => {
-                if !on && self.watchdog.take_running() {
+            Cmd::Feedback(fb) => {
+                if !fb.haptics && self.watchdog.take_running() {
                     self.pad.write_output(&OutputReport::rumble_stop())?;
                 }
-                self.config.forward_feedback = on;
+                self.config.feedback = fb;
+                self.fx.take_back(&self.config.effects, &fb);
             }
             Cmd::HidePhysical(on) => {
                 self.config.hide_physical = on;
@@ -698,7 +801,10 @@ impl<C: SessionChannel> Session for DualSenseSession<C> {
                 v.validate()?;
                 self.config.effects.player_leds = v;
             }
-            Cmd::MicLed(v) => self.config.effects.mic_led = v,
+            Cmd::MicLed(v) => {
+                v.validate()?;
+                self.config.effects.mic_led = v;
+            }
             Cmd::LeftTrigger(v) => self.set_trigger(true, v)?,
             Cmd::RightTrigger(v) => self.set_trigger(false, v)?,
         }
@@ -708,12 +814,16 @@ impl<C: SessionChannel> Session for DualSenseSession<C> {
     }
 
     fn poll(&mut self) -> Result<Option<Value>> {
-        // Status handle: battery, and an error here means the pad is gone.
-        if let Some(report) = self.pad.drain_input()? {
-            self.battery_raw = report.battery_raw();
+        let now = Instant::now();
+        // Coalesce visual input to the display rate without slowing down game output.
+        if self.last_input.is_none_or(|at| now.duration_since(at) >= INPUT_INTERVAL) {
+            if let Some((battery, controls)) = self.pad.drain_input()? {
+                self.battery_raw = battery;
+                self.controls = Some(controls);
+            }
+            self.last_input = Some(now);
         }
 
-        let now = Instant::now();
         let mut virtual_active = false;
         if let Some(emu) = &self.emulation {
             if let Some(failure) = emu.failure() {
@@ -728,23 +838,26 @@ impl<C: SessionChannel> Session for DualSenseSession<C> {
                 }
                 virtual_active = ch.is_active()?;
             }
-            let overlay = self.fx.overlay(&self.config.effects, now);
+            let fb = self.config.feedback;
+            let overlay = self.fx.overlay(&self.config.effects, &fb, now);
             for mut report in outputs {
                 self.output_count += 1;
+                // Drop what the user keeps for Periph (or turned off); the game owns the rest of
+                // what it sets, and Periph's kept sections are written over it.
+                fb.filter(&mut report);
                 self.watchdog.observe(&report, now);
-                if self.config.forward_feedback {
-                    // The game owns what it sets; overridden sections get Periph's value instead.
-                    self.fx.game_owns = self.fx.game_owns.union(SectionFlags::of(&report));
-                    overlay.apply(&mut report);
+                self.fx.game_owns = self.fx.game_owns.union(SectionFlags::of(&report));
+                overlay.apply(&mut report);
+                if !report.is_noop() {
                     self.pad.write_output(&report)?;
                 }
             }
         }
         let forwarding = self.game_forwarding();
-        if let Some(report) = self.fx.due(&self.config.effects, now, forwarding) {
+        if let Some(report) = self.fx.due(&self.config.effects, &self.config.feedback, now, forwarding) {
             self.pad.write_output(&report)?;
         }
-        if self.watchdog.expired(now) && self.config.forward_feedback {
+        if self.watchdog.expired(now) {
             self.pad.write_output(&OutputReport::rumble_stop())?;
         }
 
@@ -753,27 +866,177 @@ impl<C: SessionChannel> Session for DualSenseSession<C> {
             battery_raw: self.battery_raw,
             output_reports: self.output_count,
             hid_hide: self.hidhide,
+            controls: self.controls,
+            lights: self.pad.shown,
         };
         Ok(self.throttle.offer(status, now).map(serde_json::to_value).transpose()?)
     }
 
     fn poll_interval(&self) -> Duration {
-        // Output (rumble/LEDs) is drained here; input has its own thread.
+        // The forwarder still submits every report on its own thread.
         if self.emulation.is_some() {
             Duration::from_millis(4)
-        } else if self.config.effects.lightbar.animated() {
-            effects::FRAME
         } else {
-            Duration::from_millis(100)
+            INPUT_INTERVAL
         }
     }
 }
 
 pub struct DualSenseDriver;
 
+fn snapshot_config(snap: &Snapshot) -> Option<Config> {
+    snap.config.clone().and_then(|v| serde_json::from_value(v).ok())
+}
+
+/// Lightbar effects offered in the tray flyout ("none" is the lightbar switch).
+const TRAY_MODES: [&str; 4] = ["static", "breathing", "strobe", "rainbow"];
+const TRAY_BRIGHTNESS: [u8; 4] = [25, 50, 75, 100];
+/// Lightbar colour presets (the Lights page's `COLORS`).
+const TRAY_COLORS: [[u8; 3]; 9] = [[255, 0, 0], [255, 120, 0], [255, 220, 0], [0, 255, 60], [0, 200, 255], [0, 80, 255], [140, 0, 255], [255, 0, 160], [255, 255, 255]];
+/// Player LED patterns: player 1-4, none, all (the pad mirrors them, so only symmetric ones).
+const TRAY_PLAYER: [u8; 6] = [0x04, 0x0a, 0x15, 0x1b, 0x00, 0x1f];
+
+/// Quick settings of the tray flyout: the virtual controller (and, while it runs, hiding the
+/// physical pad and the game's vibration), lightbar switch with colour / effect / brightness, mic LED,
+/// player LEDs.
+fn tray_items(snap: &Snapshot) -> Vec<TrayItem> {
+    let Some(c) = snapshot_config(snap) else { return Vec::new() };
+    let lb = &c.effects.lightbar;
+    let lit = !matches!(lb.mode, effects::LightMode::None | effects::LightMode::Off);
+    let current = serde_json::to_value(lb.mode).ok();
+    let mut items = vec![TrayItem::Check { id: "emulation".into(), label: t("dualsense.emulation.virtualTitle"), checked: c.emulation }];
+    if c.emulation {
+        items.push(TrayItem::Check { id: "hide".into(), label: t("dualsense.emulation.hide"), checked: c.hide_physical });
+        items.push(TrayItem::Check { id: "haptics".into(), label: t("dualsense.emulation.feedback.haptics"), checked: c.feedback.haptics });
+    }
+    // The lightbar switch stands for "don't change"; colour, effect and brightness while it is on.
+    items.push(TrayItem::Check { id: "lightbar".into(), label: t("dualsense.lights.lightbar"), checked: lit });
+    if lit {
+        items.push(TrayItem::Colors {
+            label: t("dualsense.tray.color"),
+            options: TRAY_COLORS
+                .iter()
+                .enumerate()
+                .map(|(i, &rgb)| TrayColor { id: format!("color:{i}"), rgb, checked: lb.color == rgb })
+                .collect(),
+        });
+        items.push(TrayItem::Submenu {
+            label: t("dualsense.tray.effect"),
+            items: TRAY_MODES
+                .iter()
+                .map(|m| TrayItem::Check {
+                    id: format!("mode:{m}"),
+                    label: t(&format!("dualsense.lights.modes.{m}")),
+                    checked: current.as_ref().and_then(Value::as_str) == Some(m),
+                })
+                .collect(),
+        });
+        items.push(TrayItem::Submenu {
+            label: t("dualsense.lights.brightness"),
+            items: TRAY_BRIGHTNESS
+                .iter()
+                .map(|&b| TrayItem::Check { id: format!("bright:{b}"), label: format!("{b}%"), checked: lb.brightness == b })
+                .collect(),
+        });
+    }
+    items.push(TrayItem::Submenu {
+        label: t("dualsense.lights.mic"),
+        items: [effects::MicMode::Off, effects::MicMode::On, effects::MicMode::Blink]
+            .into_iter()
+            .map(|m| {
+                let key = serde_json::to_value(m).ok().and_then(|v| v.as_str().map(str::to_owned)).unwrap_or_default();
+                TrayItem::Check { id: format!("mic:{key}"), label: t(&format!("dualsense.lights.micModes.{key}")), checked: c.effects.mic_led.mode == m || (m == effects::MicMode::Off && c.effects.mic_led.mode == effects::MicMode::Auto) }
+            })
+            .collect(),
+    });
+    let pl = &c.effects.player_leds;
+    items.push(TrayItem::Submenu {
+        label: t("dualsense.lights.player"),
+        items: TRAY_PLAYER
+            .iter()
+            .enumerate()
+            .flat_map(|(i, &mask)| {
+                let check = TrayItem::Check {
+                    id: format!("leds:{mask}"),
+                    label: match i {
+                        4 => t("dualsense.lights.noLeds"),
+                        5 => t("dualsense.lights.allLeds"),
+                        n => (n + 1).to_string(),
+                    },
+                    checked: pl.enabled && pl.mask == mask,
+                };
+                // players 1-4, then none / all as their own group
+                if i == 4 { vec![TrayItem::Separator, check] } else { vec![check] }
+            })
+            .collect(),
+    });
+    items
+}
+
 impl Driver for DualSenseDriver {
     fn info(&self) -> DeviceInfo {
         DeviceInfo { id: "dualsense", name: "DualSense", kind: Kind::Controller }
+    }
+
+    fn tray(&self, snap: &Snapshot) -> Option<Tray> {
+        if !snap.connected {
+            return None;
+        }
+        let name = snap.product.as_deref().filter(|name| !name.trim().is_empty()).unwrap_or(self.info().name);
+        let battery = snap.status.as_ref().and_then(|status| {
+            if status.get("controls").is_none_or(Value::is_null) {
+                return None;
+            }
+            let raw = u8::try_from(status.get("batteryRaw")?.as_u64()?).ok()?;
+            match raw >> 4 {
+                0 | 1 => Some((((raw & 0x0f) * 10 + 5).min(100), raw >> 4 == 1)),
+                2 => Some((100, false)),
+                _ => None,
+            }
+        });
+        let header = battery.map_or_else(|| name.to_string(), |(percent, charging)| {
+            let key = if charging { "dualsense.tray.charging" } else { "dualsense.tray.battery" };
+            tf(key, &[("name", &name), ("battery", &percent)])
+        });
+        Some(Tray { header, battery, items: tray_items(snap) })
+    }
+
+    fn tray_command(&self, id: &str, snap: &Snapshot) -> Option<Value> {
+        let c = snapshot_config(snap)?;
+        let lightbar = |lb: effects::Lightbar| Some(serde_json::json!({ "type": "lightbar", "value": lb }));
+        match id {
+            "emulation" => Some(serde_json::json!({ "type": "emulation", "value": !c.emulation })),
+            "hide" => Some(serde_json::json!({ "type": "hidePhysical", "value": !c.hide_physical })),
+            "lightbar" => {
+                let lb = &c.effects.lightbar;
+                let lit = !matches!(lb.mode, effects::LightMode::None | effects::LightMode::Off);
+                let mode = if lit { effects::LightMode::Off } else { effects::LightMode::Static };
+                lightbar(effects::Lightbar { mode, ..c.effects.lightbar })
+            }
+            "haptics" => {
+                let feedback = effects::Feedback { haptics: !c.feedback.haptics, ..c.feedback };
+                Some(serde_json::json!({ "type": "feedback", "value": feedback }))
+            }
+            _ => {
+                if let Some(rgb) = id.strip_prefix("color:").and_then(|i| i.parse::<usize>().ok()).and_then(|i| TRAY_COLORS.get(i)) {
+                    let lb = &c.effects.lightbar;
+                    let mode = if matches!(lb.mode, effects::LightMode::None | effects::LightMode::Off) { effects::LightMode::Static } else { lb.mode };
+                    lightbar(effects::Lightbar { mode, color: *rgb, ..c.effects.lightbar })
+                } else if let Some(mode) = id.strip_prefix("mic:").and_then(|m| serde_json::from_value(Value::from(m)).ok()) {
+                    let mic = effects::MicLed { mode, ..c.effects.mic_led };
+                    Some(serde_json::json!({ "type": "micLed", "value": mic }))
+                } else if let Some(mask) = id.strip_prefix("leds:").and_then(|m| m.parse::<u8>().ok()).filter(|m| TRAY_PLAYER.contains(m)) {
+                    let leds = effects::PlayerLeds { enabled: true, mask, ..c.effects.player_leds };
+                    Some(serde_json::json!({ "type": "playerLeds", "value": leds }))
+                } else if let Some(mode) = id.strip_prefix("mode:").and_then(|m| serde_json::from_value(Value::from(m)).ok()) {
+                    lightbar(effects::Lightbar { mode, ..c.effects.lightbar })
+                } else if let Some(brightness) = id.strip_prefix("bright:").and_then(|b| b.parse::<u8>().ok()).filter(|b| *b <= 100) {
+                    lightbar(effects::Lightbar { brightness, ..c.effects.lightbar })
+                } else {
+                    None
+                }
+            }
+        }
     }
 
     fn open(&self) -> Result<(Box<dyn Session>, Connected)> {
@@ -800,6 +1063,21 @@ mod tests {
         raw[3] = right;
         raw[4] = left;
         OutputReport::parse(&raw).unwrap()
+    }
+
+    #[test]
+    fn tray_commands_parse_as_cmd() {
+        let snap = Snapshot { connected: true, config: Some(serde_json::to_value(Config::default()).unwrap()), ..Default::default() };
+        let items = tray_items(&snap);
+        assert_eq!(items.len(), 4, "lightbar off: no colour, effect, brightness; no emulation extras");
+        for id in ["lightbar", "mic:off", "mic:blink", "emulation", "hide", "haptics", "color:3", "leds:0", "leds:27", "mode:static", "mode:rainbow", "mode:none", "bright:50"] {
+            let v = DualSenseDriver.tray_command(id, &snap).unwrap_or_else(|| panic!("{id}"));
+            core::parse::<Cmd>(v).unwrap_or_else(|e| panic!("{id}: {e}"));
+        }
+        assert!(DualSenseDriver.tray_command("mode:bogus", &snap).is_none());
+        assert!(DualSenseDriver.tray_command("bright:200", &snap).is_none());
+        assert!(DualSenseDriver.tray_command("leds:3", &snap).is_none(), "asymmetric masks are not offered");
+        assert!(DualSenseDriver.tray_command("color:9", &snap).is_none());
     }
 
     #[test]
@@ -842,15 +1120,25 @@ mod tests {
         use serde_json::json;
         assert!(matches!(core::parse::<Cmd>(json!({"type":"refresh"})).unwrap(), Cmd::Refresh));
         assert!(matches!(core::parse::<Cmd>(json!({"type":"emulation","value":true})).unwrap(), Cmd::Emulation(true)));
-        assert!(matches!(core::parse::<Cmd>(json!({"type":"forwardFeedback","value":false})).unwrap(), Cmd::ForwardFeedback(false)));
+        let fb = core::parse::<Cmd>(json!({"type":"feedback","value":{"lights":"periph","haptics":false,"triggers":"game"}})).unwrap();
+        assert!(matches!(fb, Cmd::Feedback(f) if f.lights == effects::Source::Periph && !f.haptics && f.triggers == effects::Source::Game));
         assert!(matches!(core::parse::<Cmd>(json!({"type":"hidePhysical","value":true})).unwrap(), Cmd::HidePhysical(true)));
         assert!(core::parse::<Cmd>(json!({"type":"bogus"})).is_err());
-        let lb = core::parse::<Cmd>(json!({"type":"lightbar","value":{"mode":"static","color":[1,2,3],"brightness":50,"speed":5,"override":false}})).unwrap();
+        let lb = core::parse::<Cmd>(json!({"type":"lightbar","value":{"mode":"static","color":[1,2,3],"brightness":50,"speed":5}})).unwrap();
         assert!(matches!(lb, Cmd::Lightbar(l) if l.color == [1, 2, 3]));
-        let rt = core::parse::<Cmd>(json!({"type":"rightTrigger","value":{"effect":{"kind":"weapon","start":2,"end":6,"strength":8},"override":true}})).unwrap();
-        assert!(matches!(rt, Cmd::RightTrigger(t) if t.override_game && t.effect.is_some()));
-        let off = core::parse::<Cmd>(json!({"type":"leftTrigger","value":{"effect":null,"override":false}})).unwrap();
+        let rt = core::parse::<Cmd>(json!({"type":"rightTrigger","value":{"effect":{"kind":"weapon","start":2,"end":6,"strength":8}}})).unwrap();
+        assert!(matches!(rt, Cmd::RightTrigger(t) if t.effect.is_some()));
+        let off = core::parse::<Cmd>(json!({"type":"leftTrigger","value":{"effect":null}})).unwrap();
         assert!(matches!(off, Cmd::LeftTrigger(t) if t.effect.is_none()));
+    }
+
+    #[test]
+    fn old_forward_switch_migrates() {
+        let c: Config = serde_json::from_str(r#"{"forwardFeedback":false,"hidePhysical":true}"#).unwrap();
+        assert_eq!(c.forward_feedback, Some(false));
+        let saved = serde_json::to_value(&c).unwrap();
+        assert!(saved.get("forwardFeedback").is_none(), "never written back");
+        assert_eq!(saved["feedback"]["haptics"], true);
     }
 
     #[test]
@@ -886,12 +1174,48 @@ mod tests {
     #[test]
     fn status_is_throttled_except_for_visible_changes() {
         let t0 = Instant::now();
-        let s = |active, reports| Status { virtual_active: active, battery_raw: 5, output_reports: reports, hid_hide: HidHideState::Off };
+        let s = |active, reports| Status { virtual_active: active, battery_raw: 5, output_reports: reports, hid_hide: HidHideState::Off, controls: None, lights: Shown::default() };
         let mut th = StatusThrottle::default();
         assert!(th.offer(s(false, 0), t0).is_some(), "first status always goes out");
         assert!(th.offer(s(false, 0), t0 + Duration::from_secs(5)).is_none(), "unchanged");
         assert!(th.offer(s(false, 1), t0 + Duration::from_secs(5)).is_some());
         assert!(th.offer(s(false, 2), t0 + Duration::from_millis(5010)).is_none(), "counter change, too soon");
         assert!(th.offer(s(true, 2), t0 + Duration::from_millis(5020)).is_some(), "visible change, at once");
+        let mut lit = s(true, 2);
+        lit.lights.observe(&dualsense_proto::effects::Sections { lightbar: Some([1, 2, 3]), ..Default::default() }.report());
+        assert!(th.offer(lit, t0 + Duration::from_millis(5030)).is_some(), "the lights changed: at once");
+    }
+
+    #[test]
+    fn shown_follows_written_sections_only() {
+        use dualsense_proto::effects::Sections;
+        let mut shown = Shown::default();
+        shown.observe(&Sections { lightbar: Some([9, 8, 7]), player_leds: Some((0x0a, 1)), ..Default::default() }.report());
+        shown.observe(&Sections { mic_led: Some(1), ..Default::default() }.report());
+        shown.observe(&OutputReport::rumble_stop());
+        assert_eq!(shown, Shown { lightbar: Some([9, 8, 7]), player_leds: Some((0x0a, 1)), mic_led: Some(1) });
+    }
+
+    #[test]
+    fn preview_preserves_quick_taps_and_uses_latest_analog_values() {
+        let mut tap = InputReport::neutral();
+        tap.set_buttons(&Buttons { dpad: 7, cross: true, mute: true, ..Buttons::default() });
+        let mut released = InputReport::neutral();
+        released.set_sticks(0, 130, 255, 120);
+        released.set_triggers(9, 210);
+        let mut reports = PreviewReports::default();
+        reports.push(tap);
+        reports.push(released);
+        let (_, controls) = reports.finish().unwrap();
+        assert_eq!((controls.buttons.dpad, controls.buttons.cross, controls.buttons.mute), (7, true, true));
+        assert_eq!(controls.sticks, (0, 128, 255, 120));
+        assert_eq!(controls.triggers, (9, 210));
+
+        let mut throttle = StatusThrottle::default();
+        let now = Instant::now();
+        let mut status = Status { virtual_active: false, battery_raw: 5, output_reports: 0, hid_hide: HidHideState::Off, controls: None, lights: Shown::default() };
+        assert!(throttle.offer(status.clone(), now).is_some());
+        status.controls = Some(controls);
+        assert!(throttle.offer(status, now + INPUT_INTERVAL).is_some());
     }
 }

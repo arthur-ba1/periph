@@ -6,6 +6,7 @@
 
 <script>
   import { onMount } from "svelte";
+  import { t } from "$lib/i18n.svelte.js";
   import * as THREE from "three";
   import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -175,6 +176,6 @@
 
 <div bind:this={host} class="relative size-full {interactive ? 'cursor-grab active:cursor-grabbing' : ''} {className}" class:opacity-0={!ready} style="transition: opacity 500ms ease">
   {#if failed}
-    <div class="text-muted-foreground absolute inset-0 grid place-items-center text-xs">Modelo 3D indisponível</div>
+    <div class="text-muted-foreground absolute inset-0 grid place-items-center text-xs">{t("vt2.model3dUnavailable")}</div>
   {/if}
 </div>

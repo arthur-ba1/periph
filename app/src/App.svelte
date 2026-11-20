@@ -6,6 +6,7 @@
   import { expoOut } from "svelte/easing";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { Toaster } from "$lib/components/ui/sonner/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
   import { Separator } from "$lib/components/ui/separator/index.js";
@@ -40,6 +41,12 @@
     document.documentElement.classList.add("dark");
     initDevices();
     try { win = getCurrentWindow(); } catch {}
+    // double click on a device's tray icon (or picking it in the tray flyout)
+    if (!window.__TAURI_INTERNALS__) return;
+    const unlisten = listen("open-device", ({ payload }) => {
+      if (MODULES.some((m) => m.id === payload)) deviceId = payload;
+    });
+    return () => unlisten.then((off) => off());
   });
 
   let shellEl = $state();

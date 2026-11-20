@@ -2,11 +2,11 @@
 //!
 //! TEMPLATE: rename `mydevice`/`MyDevice`, then replace the example setting (polling rate) with
 //! the device's real settings. Copy the shape of crates/periph-app/src/drivers/vt2.rs for a full
-//! example with status polling and a tray menu.
+//! example with status polling and tray quick settings.
 
 use hidapi::{HidApi, HidDevice};
 use mydevice_proto::{self as p, addr, Resp};
-use periph_core::{self as core, serde_json::{self, Value}, Connected, DeviceInfo, Driver, Kind, Session};
+use periph_core::{self as core, serde_json::{self, Value}, Absent, Connected, DeviceInfo, Driver, Kind, Session};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
@@ -47,7 +47,8 @@ impl Dev {
                 return Ok((Dev { cmd }, c));
             }
         }
-        anyhow::bail!("não encontrado")
+        // a stable code lets the UI show a translated explanation instead of the raw message
+        Err(Absent::new("notFound", "device not found").into())
     }
 
     /// Send a command and wait for the ready answer, the way the official app does.
@@ -61,7 +62,8 @@ impl Dev {
             match p::parse_response(&buf[..n])? {
                 Resp::Ready(data) => return Ok(data.to_vec()),
                 Resp::Busy if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(2)),
-                Resp::Busy => anyhow::bail!("o dispositivo não respondeu"),
+                // technical errors stay in English; user-facing ones use periph_core::t("mydevice.errors.…")
+                Resp::Busy => anyhow::bail!("the device did not answer"),
             }
         }
     }

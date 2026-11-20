@@ -1,0 +1,15 @@
+{
+  "name": "Brand Model",
+  "tabs": { "performance": "Desempenho" },
+  "waiting": {
+    "reading": "Lendo configuração…",
+    "searching": "Procurando o Brand Model",
+    "text": "Conecte o dispositivo. Se o software oficial estiver aberto, feche-o, porque os dois não podem usar o dispositivo ao mesmo tempo."
+  },
+  "performance": {
+    "title": "Desempenho",
+    "description": "Com que frequência o dispositivo se comunica com o PC.",
+    "polling": "Polling rate",
+    "pollingDesc": "Quantas vezes por segundo o dispositivo informa sua posição."
+  }
+}

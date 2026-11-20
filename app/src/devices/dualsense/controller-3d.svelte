@@ -5,6 +5,10 @@
   const found = import.meta.glob("./assets/model.glb", { eager: true, query: "?url", import: "default" });
   export const MODEL_URL = Object.values(found)[0] ?? null;
 
+  // The model file is fetched once and parsed per view (the sidebar thumbnail and the stage).
+  let glb = null;
+  const loadGlb = () => (glb ??= fetch(MODEL_URL).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(r.status))));
+
   // Model space after the pivot below: +Y up, -Z towards the triggers, X across (metres).
   // Anchors were measured on the model (the lightbar from its emissive texture).
   export const ANCHORS = {
@@ -16,6 +20,9 @@
     triggers: [0.12, 0.014, -0.124], // linked: tag on the R2 the camera shows
   };
 
+  const rear = { at: [0, -0.012, -0.035], dir: [0.56, 0.79, -0.84], dist: 0.46 };
+  const REAR_TRIGGERS = [["rightShort", 1], ["leftShort", 0]];
+
   /** Camera per focus: what to look at, from which direction, how far. */
   export const SHOTS = {
     // `at` is a model-space point (it follows the standing pose); `dir` is the camera direction
@@ -24,11 +31,10 @@
     lightbar: { at: [0, 0.045, -0.085], dir: [0, 0.3, 1], dist: 0.3 },
     player: { at: [0, 0.058, -0.034], dir: [0, 0.3, 1], dist: 0.13 },
     mic: { at: [0, 0.047, 0.014], dir: [0, 0.3, 1], dist: 0.15 },
-    // linked triggers: the same close-up as R2 (both paddles move and tint together)
-    triggers: { at: [0.115, -0.01, -0.105], dir: [0.65, 0.75, 0.2], dist: 0.4 },
-    l2: { at: [-0.115, -0.01, -0.105], dir: [-0.65, 0.75, 0.2], dist: 0.4 },
-    r2: { at: [0.115, -0.01, -0.105], dir: [0.65, 0.75, 0.2], dist: 0.4 },
-    standing: { at: [0, 0, -0.012], dir: [0, 0.12, 1], dist: 0.52 }, // sidebar thumbnail
+    triggers: rear,
+    l2: rear,
+    r2: rear,
+    standing: { at: [0, 0.01, -0.02], dir: [0, 0.12, 1], dist: 0.62 }, // sidebar thumbnail
   };
 
 </script>
@@ -42,20 +48,31 @@
   import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
   import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
   import { zonesOf } from "./store.svelte.js";
+  import { buildGhost } from "./hologram.js";
+  import { EMULATION_MODELS } from "./emulation-models.js";
+  import { disposeGhostPreview, loadGhostPreview } from "./load-ghost-preview.js";
+  import { splitControlGeometry } from "./control-geometry.js";
+  import { browserControls, controlAxis, controlForPiece, controlPressed, controlTrigger } from "./controller-input.js";
+  import { DEMO } from "$lib/device-state.svelte.js";
   import { t } from "$lib/i18n.svelte.js";
 
   /**
-   * cfg: driver config; focus: SHOTS key; virtual: show the emulated
-   * twin; flash: { part, n } pulse; labels: parts that get a callout; onselect(part);
+   * cfg: driver config; focus: SHOTS key; virtual: show the emulated controller (a translucent silhouette;
+   *   the physical one materializes back from it when this turns off)
+   * flash: { part, n } pulse; labels: parts that get a callout; onselect(part);
    * compact: sidebar thumbnail (fixed overview, no callouts).
    */
-  let { cfg = null, focus = "overview", virtual = false, flash = null, labels = [], onselect = null, compact = false, fallback = null, class: className = "" } = $props();
+  // lights: what the driver last wrote to the real pad (status.lights); shown as is when given
+  let { cfg = null, lights = null, controls = null, focus = "overview", virtual = false, preview = null, flash = null, labels = [], onselect = null, compact = false, model = "white", fallback = null, class: className = "" } = $props();
 
   let host;
   let ready = $state(false);
   let failed = $state(!MODEL_URL);
+  let failedPreviews = $state({});
+  const previewFailed = $derived(!!preview && failedPreviews[preview]);
   /** Screen position of each anchor (px in host), updated every frame. */
   let screen = $state({});
+  let triggerTravel = $state([0, 0]);
   let api = null;
 
   /** Theme colour from a CSS variable (the theme uses oklch, which THREE.Color can't parse). */
@@ -82,6 +99,94 @@
 
   const BUZZ = new Set(["vibration", "multiVibration", "galloping", "machine"]);
   const LED_ALPHA = [1, 0.6, 0.3]; // high, medium, low
+  const PRESS_DEPTH = { touchpad: 0.003, ps: 0.004, mute: 0.003, l3: 0.004, r3: 0.004 };
+  const OPAQUE_ALPHA = 0.999;
+
+  // The export packs opaque plastic and translucent button caps into the same materials.
+  // Render the plastic into the depth buffer first so it stays visible beneath the caps.
+  function addTransparencyPass(mesh) {
+    const opaque = mesh.material;
+    const translucent = opaque.clone();
+    translucent.color = opaque.color;
+    translucent.emissive = opaque.emissive;
+    translucent.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <alphatest_fragment>", `if (diffuseColor.a >= ${OPAQUE_ALPHA}) discard;`)
+        .replace("#include <lights_fragment_end>", `#include <lights_fragment_end>
+          reflectedLight.directSpecular = vec3(0.0);
+          reflectedLight.indirectSpecular = vec3(0.0);`);
+    };
+    opaque.alphaTest = OPAQUE_ALPHA;
+    opaque.transparent = false;
+    opaque.depthWrite = true;
+    mesh.add(new THREE.Mesh(mesh.geometry, translucent));
+  }
+
+  function preserveLightbarHue(material, brightness) {
+    const compile = material.onBeforeCompile;
+    const cacheKey = material.customProgramCacheKey();
+    material.customProgramCacheKey = () => `${cacheKey}:lightbar-hue`;
+    material.onBeforeCompile = function (shader) {
+      compile.call(this, shader);
+      shader.uniforms.lightbarBrightness = brightness;
+      // Tone-map reflections on the plastic first. Apply the configured LED color separately
+      // so the filmic curve cannot shift its hue, while the emissive map still shapes the glow.
+      shader.fragmentShader = "uniform float lightbarBrightness;\n" + shader.fragmentShader
+        .replace("#include <emissivemap_fragment>", `#include <emissivemap_fragment>
+          float lightbarMix = smoothstep(0.0, 0.6, emissiveColor.r) * lightbarBrightness;
+          totalEmissiveRadiance = vec3(0.0);`)
+        .replace("#include <tonemapping_fragment>", `#include <tonemapping_fragment>
+          gl_FragColor.rgb = mix(gl_FragColor.rgb, emissive, clamp(lightbarMix, 0.0, 1.0));`);
+    };
+  }
+
+  /** Colourways, as a tone curve over the model's flat-colour textures: [in, out] luminance
+   *  points (sRGB, 0..1) plus a tint. The white model's palette is a navy-black (~0.16), grey
+   *  print (~0.6), light grey buttons and trims (~0.72-0.78) and the lavender-white shell
+   *  (~0.88). Midnight Black: the shell turns charcoal and the black parts go deeper. */
+  const STYLES = {
+    midnight: {
+      curve: [[0, 0], [0.16, 0.055], [0.45, 0.42], [0.6, 0.5], [0.68, 0.36], [0.74, 0.17], [0.88, 0.135], [1, 0.15]],
+      tint: [0.97, 0.98, 1.04],
+    },
+  };
+
+  function tone(curve, x) {
+    for (let i = 1; i < curve.length; i++) {
+      const [x0, y0] = curve[i - 1], [x1, y1] = curve[i];
+      if (x <= x1) return y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+    }
+    return curve.at(-1)[1];
+  }
+  /** Recoloured copy of a base-colour texture (same UVs, flipY and colour space). */
+  function restyle(tex, style) {
+    const img = tex.image;
+    const c = document.createElement("canvas");
+    c.width = img.width;
+    c.height = img.height;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height);
+    const lut = new Float32Array(256);
+    for (let i = 0; i < 256; i++) lut[i] = tone(style.curve, i / 255);
+    const [tr, tg, tb] = style.tint;
+    const px = d.data;
+    for (let i = 0; i < px.length; i += 4) {
+      const r = px[i], gr = px[i + 1], b = px[i + 2];
+      const l = Math.round(0.2126 * r + 0.7152 * gr + 0.0722 * b);
+      const k = l ? (lut[l] * 255) / l : 0;
+      // keep a little of the original hue (the trims' warm/cool casts), mostly neutral
+      const n = lut[l] * 255;
+      px[i] = Math.min(255, (n * 0.8 + r * k * 0.2) * tr);
+      px[i + 1] = Math.min(255, (n * 0.8 + gr * k * 0.2) * tg);
+      px[i + 2] = Math.min(255, (n * 0.8 + b * k * 0.2) * tb);
+    }
+    g.putImageData(d, 0, 0);
+    const out = new THREE.CanvasTexture(c);
+    for (const p of ["flipY", "colorSpace", "wrapS", "wrapT", "magFilter", "minFilter", "channel"]) out[p] = tex[p];
+    out.anisotropy = 4;
+    return out;
+  }
 
   onMount(() => {
     if (!MODEL_URL) return;
@@ -90,7 +195,7 @@
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
-    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.enabled = !compact;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     Object.assign(renderer.domElement.style, { position: "absolute", inset: "0", width: "100%", height: "100%", display: "block", opacity: "0", transition: "opacity 700ms ease" });
     host.prepend(renderer.domElement);
@@ -104,7 +209,7 @@
 
     const key = new THREE.DirectionalLight(0xffffff, 1.5);
     key.position.set(0.3, 0.8, 0.45);
-    key.castShadow = true;
+    key.castShadow = !compact;
     key.shadow.mapSize.set(1024, 1024);
     key.shadow.radius = 5;
     Object.assign(key.shadow.camera, { left: -0.3, right: 0.3, top: 0.3, bottom: -0.3, near: 0.1, far: 2 });
@@ -117,16 +222,18 @@
     // the camera, triggers up. The stage leans it back a little and turns it slightly.
     const world = new THREE.Group();
     world.rotation.order = "YXZ";
-    world.rotation.x = compact ? Math.PI / 2 : Math.PI / 2 - 0.32;
-    world.rotation.y = compact ? 0 : -0.2;
+    world.rotation.x = compact ? Math.PI / 2 - 0.5 : Math.PI / 2 - 0.32;
+    world.rotation.y = compact ? -0.24 : -0.2;
     scene.add(world);
     world.updateMatrixWorld(true);
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), new THREE.ShadowMaterial({ opacity: 0.32 }));
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -0.13;
-    floor.receiveShadow = true;
-    scene.add(floor);
+    let floor = null;
+    if (!compact) {
+      floor = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), new THREE.ShadowMaterial({ opacity: 0.32 }));
+      floor.rotation.x = -Math.PI / 2;
+      floor.receiveShadow = true;
+      scene.add(floor);
+    }
 
     // glTF from Collada: the controller's up is -Z and its triggers +Y; turn it to +Y up,
     // triggers towards -Z (away from the default camera).
@@ -136,13 +243,39 @@
     pivot.rotation.y = Math.PI;
     pivot.add(upright);
     world.add(pivot);
-    const ghost = new THREE.Group(); // virtual twin
-    world.add(ghost);
 
     const v3 = (a) => new THREE.Vector3(...a);
     const brand = cssColor("--brand", "#3291ff");
 
-    let lbMat = null; // the model material whose emissive map is the lightbar
+    const lbColor = new THREE.Color();
+    const lbBrightness = { value: 0 };
+
+    // physical <-> hologram sweep: holoK 0 = physical, 1 = ghost (eased in the frame loop)
+    renderer.localClippingEnabled = !compact;
+    const clip = new THREE.Plane();
+    const clipNormal = new THREE.Vector3(0, 0, -1);
+    const swapClip = new THREE.Plane(), outgoingClip = new THREE.Plane();
+    const touchClip = new THREE.Plane(clipNormal.clone(), 1);
+    let holo = null, shownGhost = null, holoK = 0;
+    let swap = null;
+    const previews = new Map(), loadingPreviews = new Set();
+    const ghostTint = cssColor("--success", "#3ecf8e");
+    const SWEEP_S = 0.7, SWEEP_MARGIN = 0.02;
+
+    // colourways: original base-colour map uuid -> { white: original, <style>: recoloured (lazy) }.
+    // Materials carry the uuid in userData, which survives the clones made for the triggers.
+    const maps = new Map();
+    let style = "white";
+    function applyStyle(s) {
+      style = Object.hasOwn(STYLES, s) ? s : "white";
+      world.traverse((o) => {
+        if (!o.isMesh) return;
+        const m = o.material, v = maps.get(m.userData.baseMap);
+        if (!v) return;
+        v[style] ??= restyle(v.white, STYLES[style]);
+        if (m.map !== v[style]) ((m.map = v[style]), (m.needsUpdate = true));
+      });
+    }
 
     // player LEDs: the model only has them in its texture, so five flat bars are laid on the
     // surface below the touchpad (placed by raycast once the model is in)
@@ -221,87 +354,104 @@
       });
     }
 
-    // triggers: their own meshes, cut out of the model on load and tinted with the brand colour
+    // Movable pieces use the original triangles and materials, including the button inserts.
+    const parts = new Map();
     const trig = { l2: null, r2: null, mic: null };
     const white = new THREE.Color(0xffffff);
     const micColor = new THREE.Color(0xff7a1a);
 
-    /** The L2/R2 paddles are separate pieces inside the dark-parts mesh: find them (connected
-     *  pieces behind the shoulders, below the bumpers) and move their triangles to new meshes. */
-    function splitTriggers(root) {
+    /** The GLB stores separate pieces in material batches. Move each control into its own group. */
+    function splitControls(root) {
       world.updateMatrixWorld(true);
       const toModel = new THREE.Matrix4().copy(world.matrixWorld).invert();
-      const v = new THREE.Vector3();
       const meshes = [];
-      root.traverse((o) => o.isMesh && o.geometry.index && meshes.push(o));
+      root.traverse((o) => o.isMesh && meshes.push(o));
       for (const o of meshes) {
-        const g = o.geometry, pos = g.attributes.position, idx = g.index.array;
-        const m = new THREE.Matrix4().multiplyMatrices(toModel, o.matrixWorld);
-        // weld split vertices (UV seams) so a piece stays one component
-        const keys = new Map(), weld = new Int32Array(pos.count), pts = new Float32Array(pos.count * 3);
-        for (let i = 0; i < pos.count; i++) {
-          v.fromBufferAttribute(pos, i).applyMatrix4(m);
-          pts[i * 3] = v.x; pts[i * 3 + 1] = v.y; pts[i * 3 + 2] = v.z;
-          const k = `${Math.round(v.x * 1e5)},${Math.round(v.y * 1e5)},${Math.round(v.z * 1e5)}`;
-          if (!keys.has(k)) keys.set(k, keys.size);
-          weld[i] = keys.get(k);
-        }
-        const parent = Int32Array.from({ length: keys.size }, (_, i) => i);
-        const find = (x) => { while (parent[x] !== x) x = parent[x] = parent[parent[x]]; return x; };
-        for (let t = 0; t < idx.length; t += 3) {
-          const a = find(weld[idx[t]]);
-          parent[find(weld[idx[t + 1]])] = a;
-          parent[find(weld[idx[t + 2]])] = a;
-        }
-        const box = new Map();
-        for (let i = 0; i < pos.count; i++) {
-          const r = find(weld[i]);
-          let b = box.get(r);
-          if (!b) box.set(r, (b = { n: 0, min: [9, 9, 9], max: [-9, -9, -9] }));
-          b.n++;
-          for (let k = 0; k < 3; k++) { b.min[k] = Math.min(b.min[k], pts[i * 3 + k]); b.max[k] = Math.max(b.max[k], pts[i * 3 + k]); }
-        }
-        const side = new Map(), sideBox = {};
-        for (const [r, b] of box) {
-          const cx = (b.min[0] + b.max[0]) / 2, cz = (b.min[2] + b.max[2]) / 2;
-          // mic mute button: the small pill under the PS button
-          if (b.n > 200 && Math.abs(cx) < 0.004 && cz > 0.012 && cz < 0.03 && b.max[0] - b.min[0] < 0.03) side.set(r, "mic");
-          if (b.n < 100 || b.max[1] > 0.01 || b.min[2] > -0.11) continue;
-          const t = b.min[0] > 0.05 ? "r2" : b.max[0] < -0.05 ? "l2" : null;
-          if (t) (side.set(r, t), (sideBox[t] = b));
-        }
-        if (!side.size) continue;
-        const keep = [], cut = { l2: [], r2: [], mic: [] };
-        for (let t = 0; t < idx.length; t += 3) {
-          const s = side.get(find(weld[idx[t]]));
-          (s ? cut[s] : keep).push(idx[t], idx[t + 1], idx[t + 2]);
-        }
-        g.setIndex(keep);
-        for (const p of ["l2", "r2", "mic"]) {
-          if (!cut[p].length) continue;
-          const sg = new THREE.BufferGeometry();
-          for (const [name, attr] of Object.entries(g.attributes)) sg.setAttribute(name, attr);
-          sg.setIndex(cut[p]);
+        const transform = new THREE.Matrix4().multiplyMatrices(toModel, o.matrixWorld);
+        const pieces = splitControlGeometry(o, transform, (material, bounds) => {
+          const id = controlForPiece(material, bounds);
+          return !compact || id === "mute" ? id : null;
+        });
+        for (const { id, geometry, bounds } of pieces) {
           const mat = o.material.clone();
-          mat.emissive = new THREE.Color(0x000000);
-          mat.emissiveMap = null;
-          const mesh = new THREE.Mesh(sg, mat);
+          if (mat.emissiveMap) mat.emissive = o.material.emissive;
+          const mesh = new THREE.Mesh(geometry, mat);
           mesh.castShadow = true;
           mesh.userData.k = 0;
-          o.add(mesh); // child: same transform as the piece it came from
-          trig[p] = mesh;
-          if (sideBox[p]) {
-            // hinge along X at the paddle's top-back edge, so it can be pressed
-            const b = sideBox[p];
-            const hinge = new THREE.Group();
-            hinge.position.set((b.min[0] + b.max[0]) / 2, HINGE.y(b), HINGE.z(b));
-            world.add(hinge);
-            world.updateMatrixWorld(true);
-            hinge.attach(mesh);
-            mesh.userData.hinge = hinge;
+          o.add(mesh);
+          const paddle = id === "l2" || id === "r2";
+          if (!parts.has(id)) {
+            const b = bounds;
+            const mount = new THREE.Group();
+            mount.name = id;
+            if (paddle) mount.position.set((b.min[0] + b.max[0]) / 2, HINGE.y(b), HINGE.z(b));
+            if (id === "l3" || id === "r3") {
+              mount.position.set((b.min[0] + b.max[0]) / 2, 0.037, (b.min[2] + b.max[2]) / 2);
+            }
+            world.add(mount);
+            parts.set(id, { mount, origin: mount.position.clone(), materials: [], press: { value: 0 }, heldUntil: 0 });
+          }
+          const part = parts.get(id);
+          part.mount.attach(mesh);
+          mesh.userData.press = part.press;
+          if (!paddle) {
+            part.materials.push({ mat, color: mat.color.clone() });
+          }
+          if (id === "mute") trig.mic = mesh;
+          if (paddle) {
+            trig[id] = mesh;
+            mesh.userData.hinge = part.mount;
             mesh.userData.sim = { pos: 0, phase: "rest", t: 0.3, bounce: 0 };
             mesh.userData.kick = 0;
           }
+        }
+      }
+    }
+
+    const touchMarkers = [];
+    function addTouchMarkers() {
+      const pad = parts.get("touchpad");
+      if (!pad) return;
+      const geometry = new THREE.RingGeometry(0.0035, 0.0055, 24);
+      const material = new THREE.MeshBasicMaterial({ color: brand, side: THREE.DoubleSide, clippingPlanes: [touchClip] });
+      for (let i = 0; i < 2; i++) {
+        const marker = new THREE.Mesh(geometry, material);
+        marker.rotation.x = -Math.PI / 2;
+        marker.visible = false;
+        pad.mount.add(marker);
+        touchMarkers.push(marker);
+      }
+    }
+
+    function animateControls(input, dt, time) {
+      const k = Math.min(1, dt * 65);
+      for (const [id, part] of parts) {
+        if (id === "l2" || id === "r2") continue;
+        const { mount, origin, press } = part;
+        // Hold short taps long enough to be visible, then ease out a little more slowly.
+        if (controlPressed(input?.buttons, id)) part.heldUntil = time + 0.04;
+        const pressed = time < part.heldUntil;
+        press.value = THREE.MathUtils.damp(press.value, Number(pressed), pressed ? 75 : 28, dt);
+        mount.position.y = origin.y - (PRESS_DEPTH[id] ?? 0.0055) * press.value;
+        if (id === "l1" || id === "r1") mount.position.z = origin.z + 0.004 * press.value;
+        if (id === "l3" || id === "r3") {
+          const i = id === "l3" ? 0 : 2;
+          mount.rotation.x += (0.34 * controlAxis(input?.sticks?.[i + 1]) - mount.rotation.x) * k;
+          mount.rotation.z += (-0.34 * controlAxis(input?.sticks?.[i]) - mount.rotation.z) * k;
+        }
+        if (id === "mute") continue;
+        for (const { mat, color } of part.materials) {
+          mat.color.lerpColors(color, brand, 0.10 * press.value);
+          if (!mat.emissiveMap) mat.emissive.copy(brand).multiplyScalar(0.14 * press.value);
+        }
+      }
+      for (const [i, marker] of touchMarkers.entries()) {
+        const touch = input?.touches?.[i];
+        marker.visible = !!touch;
+        if (touch) {
+          const x = THREE.MathUtils.clamp(touch[0] / 1919, 0, 1);
+          const y = THREE.MathUtils.clamp(touch[1] / 1079, 0, 1);
+          marker.position.set(0.14 * (x - 0.5) + 0.01 * (x - 0.5) * y, 0.063, -0.107 + 0.06 * y);
         }
       }
     }
@@ -370,29 +520,68 @@
 
     // ---- camera: only the interface moves it (no mouse orbit) ----
     // Shots are framed for a 16:10 view; narrower views back off so the width still fits.
-    const look = new THREE.Vector3();
-    const goal = { at: new THREE.Vector3(), pos: new THREE.Vector3(), shot: compact ? SHOTS.standing : SHOTS.overview, k: 1 };
+    // The camera orbits: target, direction and distance ease separately, so moving between
+    // shots swings around the controller instead of cutting through it.
+    const cam = { at: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, 1), dist: 0.5 };
+    const goal = { at: new THREE.Vector3(), dir: new THREE.Vector3(0, 0, 1), dist: 0.5, shot: compact ? SHOTS.standing : SHOTS.overview, k: 1 };
+    let thumbnailBounds = null;
     function aim(shot, k, snap) {
       goal.shot = shot;
       goal.k = k;
       const fit = Math.max(1, 1.6 / camera.aspect);
       goal.at.copy(v3(shot.at)).applyMatrix4(world.matrixWorld);
-      goal.pos.copy(v3(shot.dir).normalize().multiplyScalar((shot.dist * fit) / k)).add(goal.at);
+      goal.dir.copy(v3(shot.dir)).normalize();
+      goal.dist = (shot.dist * fit) / k;
+      if (thumbnailBounds) {
+        thumbnailBounds.getCenter(goal.at);
+        const half = thumbnailBounds.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+        const right = new THREE.Vector3().crossVectors(camera.up, goal.dir).normalize();
+        const up = new THREE.Vector3().crossVectors(goal.dir, right);
+        const extent = (axis) => Math.abs(axis.x) * half.x + Math.abs(axis.y) * half.y + Math.abs(axis.z) * half.z;
+        const visibleHeight = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 0.86;
+        // Fit both axes at the nearest face of the bounds, leaving room around the model.
+        goal.dist = extent(goal.dir) + Math.max(extent(up), extent(right) / camera.aspect) / visibleHeight;
+      }
       if (snap) {
-        look.copy(goal.at);
-        camera.position.copy(goal.pos);
+        cam.at.copy(goal.at);
+        cam.dir.copy(goal.dir);
+        cam.dist = goal.dist;
       }
     }
 
-    new GLTFLoader().load(
-      MODEL_URL,
+    let gone = false;
+    function loadPreview(id) {
+      if (!id || previews.has(id) || loadingPreviews.has(id)) return;
+      const asset = EMULATION_MODELS[id];
+      if (!asset?.url) return;
+      loadingPreviews.add(id);
+      failedPreviews[id] = false;
+      loadGhostPreview(asset, id, ghostTint, (centered, size) => {
+        const scale = 0.38 / size.x;
+        return world.matrixWorld.clone().invert().scale(new THREE.Vector3(scale, scale, scale)).multiply(centered);
+      }).then((loaded) => {
+        if (gone) return disposeGhostPreview(loaded);
+        loaded.ghost.group.name = id;
+        previews.set(id, loaded);
+        world.add(loaded.ghost.group);
+      }).catch(() => {
+        if (!gone) failedPreviews[id] = true;
+      }).finally(() => loadingPreviews.delete(id));
+    }
+
+    loadGlb().then((buf) => new GLTFLoader().parseAsync(buf, "")).then(
       (gltf) => {
+        if (gone) return;
         gltf.scene.traverse((o) => {
           if (!o.isMesh) return;
           o.castShadow = true;
           const m = o.material;
+          if (m.map) {
+            if (!maps.has(m.map.uuid)) maps.set(m.map.uuid, { white: m.map });
+            m.userData.baseMap = m.map.uuid;
+          }
           if (m.emissiveMap) {
-            // emissive texture = lightbar mask (blue); make it white so `emissive` sets the hue
+            // Keep the lightbar's original intensity gradient and let `emissive` set its hue.
             const img = m.emissiveMap.image;
             const c = document.createElement("canvas");
             c.width = img.width;
@@ -401,7 +590,7 @@
             g.drawImage(img, 0, 0);
             const d = g.getImageData(0, 0, c.width, c.height);
             for (let i = 0; i < d.data.length; i += 4) {
-              const v = Math.max(d.data[i], d.data[i + 1], d.data[i + 2]) > 60 ? 255 : 0;
+              const v = Math.max(d.data[i], d.data[i + 1], d.data[i + 2]);
               d.data[i] = d.data[i + 1] = d.data[i + 2] = v;
             }
             g.putImageData(d, 0, 0);
@@ -409,35 +598,45 @@
             tx.flipY = m.emissiveMap.flipY;
             tx.colorSpace = THREE.SRGBColorSpace;
             m.emissiveMap = tx;
-            m.emissive = new THREE.Color(0x000000);
-            lbMat = m;
+            m.emissive = lbColor;
           }
-          // the export marks opaque materials as BLEND; that breaks depth sorting
-          m.transparent = false;
-          m.alphaMode = "OPAQUE";
-          m.depthWrite = true;
         });
         upright.add(gltf.scene);
-        splitTriggers(gltf.scene);
+        splitControls(gltf.scene);
         placeLeds();
-        // floor right under the standing controller
-        floor.position.y = new THREE.Box3().setFromObject(pivot).min.y - 0.001;
+        if (compact) {
+          thumbnailBounds = new THREE.Box3().setFromObject(pivot, true);
+          aim(SHOTS.standing, 1, true);
+        } else {
+          floor.position.y = new THREE.Box3().setFromObject(pivot).min.y - 0.001;
+        }
 
-        // virtual twin: same shape, flat tinted shell behind the real one
-        const twin = gltf.scene.clone(true);
-        const tint = new THREE.MeshBasicMaterial({ color: cssColor("--success", "#3ecf8e"), transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending });
-        twin.traverse((o) => o.isMesh && ((o.material = tint), (o.castShadow = false)));
-        const tw = new THREE.Group();
-        tw.rotation.x = Math.PI / 2;
-        tw.add(twin);
-        ghost.add(tw);
-        ghost.rotation.y = Math.PI;
-        ghost.position.set(0.06, 0.03, -0.07);
-        ghost.visible = false;
+        const surfaces = [];
+        world.traverse((o) => o.isMesh && o.material.userData.baseMap && surfaces.push(o));
+        // The sidebar thumbnail always shows the physical controller.
+        if (!compact) {
+          holo = buildGhost(surfaces, new THREE.Matrix4().copy(world.matrixWorld).invert(), ghostTint);
+          if (state.virtual && !state.preview) {
+            shownGhost = holo;
+            holoK = 1;
+          }
+        }
+        for (const mesh of surfaces) {
+          if (mesh.material.transparent) addTransparencyPass(mesh);
+        }
+        world.traverse((object) => {
+          if (object.isMesh && object.material.emissiveMap) preserveLightbarHue(object.material, lbBrightness);
+        });
+        if (!compact) {
+          // everything physical (model and LEDs) is clipped at the sweep edge
+          world.traverse((o) => o.isMesh && [o.material].flat().forEach((m) => (m.clippingPlanes = [clip])));
+          world.add(holo.group);
+          addTouchMarkers();
+        }
+        applyStyle(state.model);
         ready = true;
         renderer.domElement.style.opacity = "1";
       },
-      undefined,
       () => (failed = true),
     );
 
@@ -446,7 +645,7 @@
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
-      aim(goal.shot, goal.k, !ready);
+      aim(goal.shot, goal.k, compact || !ready);
     };
     const ro = new ResizeObserver(resize);
     ro.observe(host);
@@ -457,8 +656,9 @@
     io.observe(host);
 
     // ---- live state (pushed by the $effects below) ----
-    let state = { cfg: null, focus: "overview", virtual: false, labels: [] };
-    const lbColor = new THREE.Color(), tmp = new THREE.Color(), proj = new THREE.Vector3();
+    let state = { cfg: null, lights: null, focus: "overview", virtual: false, preview: null, labels: [], model: "white" };
+    let liveControls = null;
+    const tmp = new THREE.Color(), proj = new THREE.Vector3();
 
     let raf, time = 0, last = performance.now();
     const tick = (now = performance.now()) => {
@@ -468,25 +668,36 @@
       time += dt;
       if (!visible || document.hidden) return;
       const c = state.cfg;
+      const input = compact ? null : liveControls ?? (DEMO ? browserControls() : null);
+      animateControls(input, dt, time);
       const lit = (p) => state.focus === p || (state.focus === "triggers" && (p === "l2" || p === "r2"));
 
+      // Lights: with a connected pad, exactly what was written to it (by Periph or the game), so
+      // the model matches the controller; otherwise (demo, offline) a preview of the config.
+      const shown = state.lights;
       // lightbar
       const lb = c?.lightbar;
       let lbK = 0;
-      if (lb && lb.mode !== "none") {
-        const period = (11 - lb.speed) * 0.35;
+      if (shown) {
+        const [r, g, b] = shown.lightbar ?? [0, 0, 0];
+        const peak = Math.max(r, g, b);
+        lbK = peak / 255;
+        if (peak) lbColor.setRGB(r / peak, g / peak, b / peak, THREE.SRGBColorSpace);
+      } else if (lb && lb.mode !== "none" && lb.mode !== "off") {
+        // same timing and curves as the driver (Lightbar::color_at in effects.rs)
+        const period = 3.25 - 0.25 * lb.speed;
         const ph = (time % period) / period;
         lbK = lb.brightness / 100;
-        if (lb.mode === "breathing") lbK *= 0.2 + 0.8 * (0.5 - 0.5 * Math.cos(ph * Math.PI * 2));
-        if (lb.mode === "strobe") lbK *= ph < 0.5 ? 1 : 0.05;
-        if (lb.mode === "rainbow") lbColor.setHSL((time / (period * 3)) % 1, 1, 0.5);
+        if (lb.mode === "breathing") lbK *= 0.5 - 0.5 * Math.cos(ph * Math.PI * 2);
+        if (lb.mode === "strobe") lbK *= ph < 0.5 ? 1 : 0;
+        if (lb.mode === "rainbow") lbColor.setHSL(ph, 1, 0.5);
         else lbColor.setRGB(lb.color[0] / 255, lb.color[1] / 255, lb.color[2] / 255, THREE.SRGBColorSpace);
       }
       for (const p in flash) flash[p] = Math.max(0, flash[p] - dt / 0.7);
-      if (lbMat) lbMat.emissive.copy(lbColor).multiplyScalar(lbK * 2.2 * (1 + flash.lightbar * 0.3));
+      lbBrightness.value = lbK * (1 + flash.lightbar * 0.3);
 
       // player LEDs
-      const pl = c?.playerLeds;
+      const pl = shown ? (shown.playerLeds ? { enabled: true, mask: shown.playerLeds[0], brightness: shown.playerLeds[1] } : null) : c?.playerLeds;
       leds.forEach((m, i) => {
         const on = !!pl?.enabled && ((pl.mask >> i) & 1) === 1;
         // lit: white at the chosen level; unlit: dark like the real strip (a faint trace of the
@@ -497,29 +708,43 @@
       });
 
       // mic button: orange while the LED is on, accent while it is being edited
-      const micOn = !!c?.micLed?.enabled && c.micLed.on;
+      const mic = c?.micLed;
+      const micOn = shown
+        ? !!shown.micLed
+        : mic?.mode === "on" || (mic?.mode === "blink" && Math.floor((time * 1000) / mic.intervalMs) % 2 === 0);
       if (trig.mic) {
         const tm = trig.mic;
         const target = micOn ? 1 : !compact && lit("mic") ? 0.6 : 0;
         tm.userData.k += (target - tm.userData.k) * Math.min(1, dt * 8);
         const tint = micOn ? micColor : brand;
-        const k = Math.min(1, tm.userData.k + flash.mic * 0.25);
+        const k = Math.min(1, tm.userData.k + flash.mic * 0.25 + parts.get("mute").press.value * 0.24);
         tm.material.color.copy(white).lerp(tint, k * 0.7);
         tm.material.emissive.copy(tint).multiplyScalar(k * (micOn ? 0.9 : 0.5));
       }
 
-      // triggers. Linked (focus "triggers"): R2 runs the press simulation and L2 mirrors it
-      // frame by frame, so both paddles move and flash as one.
+      // Live input moves each paddle independently. With no input source, the effect preview
+      // can simulate a pull, mirroring R2 on L2 when the effects are linked.
       const linked = state.focus === "triggers";
+      if (linked || state.focus === "l2" || state.focus === "r2") {
+        const left = Math.round((input?.triggers?.[0] ?? 0) * 100 / 255);
+        const right = Math.round((input?.triggers?.[1] ?? 0) * 100 / 255);
+        if (left !== triggerTravel[0] || right !== triggerTravel[1]) triggerTravel = [left, right];
+      }
       for (const [p, section] of [["r2", "rightTrigger"], ["l2", "leftTrigger"]]) {
         const tm = trig[p];
         if (!tm) continue;
         const e = c?.[section]?.effect;
-        // accent only on the trigger being edited (both when linked); never in the thumbnail
+        const travel = controlTrigger(input, p);
+        const press = parts.get(p).press;
+        press.value = THREE.MathUtils.damp(press.value, travel, travel > press.value ? 75 : 28, dt);
         const target = !compact && lit(p) ? 1 : 0;
-        tm.userData.k += (target - tm.userData.k) * Math.min(1, dt * 6);
+        tm.userData.k = THREE.MathUtils.damp(tm.userData.k, target, 9, dt);
         const lead = trig.r2;
-        if (linked && p === "l2" && lead?.userData.hinge && tm.userData.hinge) {
+        if (input) {
+          tm.userData.hinge.rotation.x = HINGE.dir * HINGE.travel * press.value;
+          Object.assign(tm.userData.sim, { pos: press.value, phase: "rest", t: 0.3, bounce: 0 });
+          tm.userData.kick = 0;
+        } else if (linked && p === "l2" && lead?.userData.hinge && tm.userData.hinge) {
           Object.assign(tm.userData.sim, lead.userData.sim);
           tm.userData.hinge.rotation.x = lead.userData.hinge.rotation.x;
           tm.userData.kick = lead.userData.kick;
@@ -527,18 +752,65 @@
           animateTrigger(tm, lit(p) && !compact ? e : null, dt);
           tm.userData.kick = Math.max(0, (tm.userData.kick ?? 0) - dt / 0.35);
         }
-        const k = Math.min(1, tm.userData.k + flash[p] * 0.25);
-        tm.material.color.copy(white).lerp(brand, k * 0.7);
-        tm.material.emissive.copy(brand).multiplyScalar(k * 0.55 + tm.userData.kick * 0.9);
+        const accent = 0.08 * tm.userData.k + 0.11 * press.value + 0.2 * flash[p];
+        tm.material.color.copy(white).lerp(brand, accent);
+        tm.material.emissive.copy(brand).multiplyScalar(accent + tm.userData.kick * 0.9);
       }
 
-      ghost.visible = state.virtual && ready;
+      // sweep: the edge runs triggers -> grips as the controller materializes (and back)
+      if (holo) {
+        const wanted = state.preview
+          ? previews.get(state.preview)?.ghost ?? (holoK ? shownGhost : null)
+          : state.virtual ? holo : null;
+        if (holoK === 0) shownGhost = wanted;
+        if (!swap && holoK === 1 && wanted && wanted !== shownGhost) swap = { ghost: wanted, progress: 0 };
+        if (swap) {
+          // Complementary planes swap the two ghosts directly while the physical mesh stays clipped.
+          swap.progress = Math.min(1, swap.progress + dt / SWEEP_S);
+          const far = Math.max(shownGhost.zMax, swap.ghost.zMax) + SWEEP_MARGIN;
+          const near = Math.min(shownGhost.zMin, swap.ghost.zMin) - SWEEP_MARGIN;
+          const edge = THREE.MathUtils.lerp(far, near, THREE.MathUtils.smoothstep(swap.progress, 0, 1));
+          clip.set(clipNormal, holo.zMin - SWEEP_MARGIN).applyMatrix4(world.matrixWorld);
+          swapClip.set(clipNormal, edge).applyMatrix4(world.matrixWorld);
+          if (shownGhost === holo) touchClip.copy(swapClip);
+          else if (swap.ghost === holo) touchClip.copy(swapClip).negate();
+          else touchClip.copy(clip);
+          world.updateMatrixWorld(true);
+          shownGhost.animate?.(input, dt, time);
+          swap.ghost.animate?.(input, dt, time);
+          shownGhost.update(outgoingClip.copy(swapClip).negate());
+          swap.ghost.update(swapClip);
+          shownGhost.group.visible = swap.progress < 1;
+          swap.ghost.group.visible = true;
+          if (swap.progress === 1) {
+            shownGhost = swap.ghost;
+            swap = null;
+          }
+        } else {
+          holoK = wanted ? Math.min(1, holoK + dt / SWEEP_S) : Math.max(0, holoK - dt / SWEEP_S);
+          const e = THREE.MathUtils.smoothstep(holoK, 0, 1);
+          const far = Math.max(holo.zMax, shownGhost?.zMax ?? holo.zMax) + SWEEP_MARGIN;
+          const near = Math.min(holo.zMin, shownGhost?.zMin ?? holo.zMin) - SWEEP_MARGIN;
+          clip.set(clipNormal, THREE.MathUtils.lerp(far, near, e)).applyMatrix4(world.matrixWorld);
+          if (shownGhost && shownGhost !== holo) touchClip.copy(clip);
+          else touchClip.set(clipNormal, far).applyMatrix4(world.matrixWorld);
+          if (shownGhost) shownGhost.group.visible = holoK > 0.001;
+          if (shownGhost?.group.visible) {
+            world.updateMatrixWorld(true);
+            shownGhost.animate?.(input, dt, time);
+            shownGhost.update(clip);
+          }
+        }
+        floor.material.opacity = 0.32 * (1 - THREE.MathUtils.smoothstep(holoK, 0, 1));
+      }
 
       // camera: ease towards the shot
       const k = 1 - Math.pow(0.0015, dt);
-      look.lerp(goal.at, k);
-      camera.position.lerp(goal.pos, k);
-      camera.lookAt(look);
+      cam.at.lerp(goal.at, k);
+      cam.dir.lerp(goal.dir, k).normalize();
+      cam.dist += (goal.dist - cam.dist) * k;
+      camera.position.copy(cam.dir).multiplyScalar(cam.dist).add(cam.at);
+      camera.lookAt(cam.at);
       renderer.render(scene, camera);
 
       // callout positions
@@ -557,8 +829,13 @@
     tick();
 
     api = {
+      setControls(input) {
+        liveControls = input;
+      },
       set(s) {
+        if (s.preview !== state.preview) loadPreview(s.preview);
         state = s;
+        if (ready && s.model !== style) applyStyle(s.model);
       },
       aim(f, z) {
         aim(SHOTS[f] ?? SHOTS.overview, z, false);
@@ -567,19 +844,26 @@
         if (part in flash && !compact) flash[part] = 1;
       },
     };
-    if (import.meta.env.DEV && !compact) window.__ds3d = { THREE, camera, scene, pivot, goal, aim: (s) => aim(s, 1, true) };
+    if (import.meta.env.DEV && !compact) window.__ds3d = { THREE, camera, scene, pivot, goal, cam, holo: () => holoK, aim: (s) => aim(s, 1, true) };
 
     return () => {
+      gone = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
       io.disconnect();
       pmrem.dispose();
+      for (const loaded of previews.values()) disposeGhostPreview(loaded);
       ledTex.dispose();
       haloTex.dispose();
+      for (const v of maps.values()) for (const [k, tx] of Object.entries(v)) if (k !== "white") tx.dispose();
+      const geometries = new Set();
+      const materials = new Set();
       scene.traverse((o) => {
-        o.geometry?.dispose?.();
-        if (o.material) [o.material].flat().forEach((m) => m.dispose());
+        if (o.geometry) geometries.add(o.geometry);
+        if (o.material) for (const material of [o.material].flat()) materials.add(material);
       });
+      for (const geometry of geometries) geometry.dispose();
+      for (const material of materials) material.dispose();
       renderer.dispose();
       renderer.domElement.remove();
       api = null;
@@ -588,8 +872,12 @@
 
   $effect(() => {
     // read everything the frame loop needs so the effect re-runs on any change
-    const s = { cfg: cfg ? $state.snapshot(cfg) : null, focus, virtual, labels: [...labels] };
+    const s = { cfg: cfg ? $state.snapshot(cfg) : null, lights: lights ? $state.snapshot(lights) : null, focus, virtual, preview, labels: [...labels], model };
     api?.set(s);
+  });
+  $effect(() => {
+    const input = controls ? $state.snapshot(controls) : null;
+    api?.setControls(input);
   });
   $effect(() => {
     const f = compact ? "standing" : focus;
@@ -607,7 +895,7 @@
   const tm = (k) => t(`dualsense.triggers.modes.${k}`);
   function caption(part) {
     if (!cfg) return "";
-    if (part === "lightbar") return cfg.lightbar.mode === "none" ? "" : t(`dualsense.lights.modes.${cfg.lightbar.mode}`);
+    if (part === "lightbar") return cfg.lightbar.mode === "none" || cfg.lightbar.mode === "off" ? "" : t(`dualsense.lights.modes.${cfg.lightbar.mode}`);
     if (part === "l2" || part === "r2" || part === "triggers") {
       const e = cfg[part === "l2" ? "leftTrigger" : "rightTrigger"].effect;
       return e ? tm(e.kind) : "";
@@ -617,12 +905,28 @@
   const zones = (part) => zonesOf(cfg?.[part === "l2" ? "leftTrigger" : "rightTrigger"]?.effect ?? null);
   // only the part being edited is tagged (the overview stays clean)
   const show = (p) => focus === p;
+  const triggerView = $derived(focus === "triggers" || focus === "l2" || focus === "r2");
 </script>
 
-<div bind:this={host} class="relative size-full overflow-hidden {className}">
-  {#if failed}{@render fallback?.()}{/if}
+<div bind:this={host} class="relative size-full overflow-hidden {className}" class:preview-failed={previewFailed}>
+  {#if failed || previewFailed}{@render fallback?.()}{/if}
 
   {#if ready && !compact}
+    {#if triggerView}
+      <div class="absolute inset-x-3 bottom-7 grid grid-cols-2 gap-2">
+        {#each REAR_TRIGGERS as [side, i] (side)}
+          <div class="bg-background/75 rounded-md border px-2.5 py-2 backdrop-blur">
+            <div class="mb-1.5 flex justify-between gap-2 text-xs">
+              <span class="font-medium">{t(`dualsense.triggers.${side}`)}</span>
+              <span class="text-muted-foreground tabular-nums">{triggerTravel[i]}%</span>
+            </div>
+            <div class="bg-muted h-1 overflow-hidden rounded-full">
+              <div class="bg-brand h-full rounded-full" style:width="{triggerTravel[i]}%"></div>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
     {#each labels as part (part)}
       {#if screen[part] && show(part)}
         {@const [x, y] = screen[part]}
@@ -631,7 +935,7 @@
           type="button"
           class="callout absolute flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10.5px] font-medium whitespace-nowrap backdrop-blur transition-[background-color,border-color,color] duration-300
             {focus === part ? 'border-brand bg-brand/25 text-foreground' : 'bg-background/65 text-muted-foreground hover:text-foreground border-white/10'}"
-          style="left:{x}px; top:{y}px; transform: translate(-50%, {part === 'player' || part === 'mic' ? '18px' : '-180%'})"
+          style="left:{x}px; top:{y}px; transform: translate(-50%, {part === 'player' || part === 'mic' ? '18px' : triggerView ? '-250%' : '-180%'})"
           onclick={() => onselect?.(part)}
         >
           <span class="size-1.5 rounded-full {focus === part ? 'bg-brand' : 'bg-muted-foreground/50'}"></span>
@@ -647,3 +951,7 @@
     {/each}
   {/if}
 </div>
+
+<style>
+  .preview-failed > :global(canvas) { visibility: hidden; }
+</style>

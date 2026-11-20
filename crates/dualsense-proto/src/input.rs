@@ -6,6 +6,7 @@
 use crate::{INPUT_REPORT_ID, INPUT_REPORT_LEN};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct Buttons {
     /// D-pad as the controller encodes it: 0..=7 clockwise from North, 8 = released.
     pub dpad: u8,
@@ -122,6 +123,18 @@ impl InputReport {
         self.raw[10] = (bt.ps as u8) | (bt.touchpad as u8) << 1 | (bt.mute as u8) << 2;
     }
 
+    /// Coordinates of each active contact, in the controller's 1920 × 1080 touch space.
+    pub fn touches(&self) -> [Option<[u16; 2]>; 2] {
+        [33, 37].map(|offset| {
+            let b = &self.raw[offset..offset + 4];
+            (b[0] & 0x80 == 0).then(|| {
+                let x = u16::from(b[1]) | (u16::from(b[2] & 0x0f) << 8);
+                let y = u16::from(b[2] >> 4) | (u16::from(b[3]) << 4);
+                [x, y]
+            })
+        })
+    }
+
     /// Battery level in the low nibble of byte 53 (0..=10 observed; the real pad also reports
     /// charging state in the high nibble). Exposed read-only for status display.
     pub fn battery_raw(&self) -> u8 {
@@ -189,5 +202,12 @@ mod tests {
         raw[41] = 77; // touchpad packet counter
         let r = InputReport::parse(&raw).unwrap();
         assert_eq!(r.as_bytes(), &raw);
+    }
+
+    #[test]
+    fn touch_coordinates_and_inactive_contact() {
+        let mut report = InputReport::neutral();
+        report.raw[33..41].copy_from_slice(&[0x12, 0x53, 0x47, 0x43, 0x81, 1, 2, 3]);
+        assert_eq!(report.touches(), [Some([1875, 1076]), None]);
     }
 }

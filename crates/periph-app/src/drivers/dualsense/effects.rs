@@ -1,11 +1,13 @@
 //! Periph's own controller effects: lightbar (static or animated), player LEDs, mic LED and
 //! adaptive trigger effects, and how they coexist with a game's feedback while emulating.
 //!
-//! Policy (decided with the user): **the game wins by default**. While emulation forwards game
-//! feedback, a section the game has set is left to the game, unless that section's "override"
-//! is on; then Periph's value is written over the game's in every forwarded report. Sections the
-//! game never touches keep Periph's value. The DualSense keeps no state of its own, so Periph
-//! re-sends its sections periodically (and every frame while a lightbar animation runs).
+//! Policy (chosen by the user per category in the Emulation page, `Feedback`): for the lights
+//! (lightbar, player and mic LEDs) and the triggers, either **the game** or **Periph** has the
+//! last word while emulating. Game: what the game sets reaches the pad, and Periph's value only
+//! fills the sections the game never touched. Periph: the game's values for that category are
+//! dropped from every forwarded report and Periph's are written instead. The game's vibration
+//! is either forwarded or dropped. The DualSense keeps no state of its own, so Periph re-sends
+//! its sections periodically (and every frame while a lightbar animation runs).
 
 use anyhow::{bail, Result};
 use dualsense_proto::effects::{SectionFlags, Sections, TriggerEffect, PLAYER_BRIGHTNESS_MAX};
@@ -21,9 +23,11 @@ const KEEPALIVE: Duration = Duration::from_secs(2);
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum LightMode {
-    /// Periph does not touch the lightbar.
+    /// Periph does not touch the lightbar (never set; the game or the pad decide).
     #[default]
     None,
+    /// The lightbar switched off: kept dark (black).
+    Off,
     Static,
     Breathing,
     Strobe,
@@ -39,13 +43,11 @@ pub struct Lightbar {
     pub brightness: u8,
     /// Animation speed 1–10.
     pub speed: u8,
-    #[serde(rename = "override")]
-    pub override_game: bool,
 }
 
 impl Default for Lightbar {
     fn default() -> Self {
-        Self { mode: LightMode::None, color: [0, 80, 255], brightness: 100, speed: 5, override_game: false }
+        Self { mode: LightMode::None, color: [0, 80, 255], brightness: 100, speed: 5 }
     }
 }
 
@@ -57,23 +59,58 @@ pub struct PlayerLeds {
     pub mask: u8,
     /// 0 high, 1 medium, 2 low.
     pub brightness: u8,
-    #[serde(rename = "override")]
-    pub override_game: bool,
 }
 
 impl Default for PlayerLeds {
     fn default() -> Self {
-        Self { enabled: false, mask: 0x04, brightness: 0, override_game: false }
+        Self { enabled: false, mask: 0x04, brightness: 0 }
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MicMode {
+    /// Never set: Periph leaves the LED alone (the UI shows it as off, the pad's own state).
+    #[default]
+    Auto,
+    Off,
+    On,
+    /// On and off for `interval_ms` each (timed by Periph: the LED's own pulse has no speed).
+    Blink,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct MicLed {
-    pub enabled: bool,
-    pub on: bool,
-    #[serde(rename = "override")]
-    pub override_game: bool,
+    pub mode: MicMode,
+    pub interval_ms: u16,
+}
+
+impl Default for MicLed {
+    fn default() -> Self {
+        Self { mode: MicMode::Auto, interval_ms: 500 }
+    }
+}
+
+pub const MIC_INTERVAL_MS: std::ops::RangeInclusive<u16> = 100..=2000;
+
+impl MicLed {
+    pub fn validate(&self) -> Result<()> {
+        if !MIC_INTERVAL_MS.contains(&self.interval_ms) {
+            bail!("mic LED blink interval must be 100-2000 ms");
+        }
+        Ok(())
+    }
+
+    /// LED state (0 off, 1 on) `t` seconds after the engine started; `None` in `Auto`.
+    pub fn value_at(&self, t: f32) -> Option<u8> {
+        match self.mode {
+            MicMode::Auto => None,
+            MicMode::Off => Some(0),
+            MicMode::On => Some(1),
+            MicMode::Blink => Some(u8::from((t * 1000.0 / f32::from(self.interval_ms.max(1))) as u64 % 2 == 0)),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -81,8 +118,58 @@ pub struct MicLed {
 pub struct Trigger {
     /// `None` = Periph does not touch this trigger.
     pub effect: Option<TriggerEffect>,
-    #[serde(rename = "override")]
-    pub override_game: bool,
+}
+
+/// Who has the last word on one category while emulating.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Source {
+    #[default]
+    Game,
+    Periph,
+}
+
+/// What of the game's feedback reaches the physical pad while emulating; part of the config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Feedback {
+    /// Lightbar, player LEDs and mic LED.
+    pub lights: Source,
+    /// The game's vibration reaches the pad (Periph has none of its own).
+    pub haptics: bool,
+    /// Both adaptive triggers.
+    pub triggers: Source,
+}
+
+impl Default for Feedback {
+    fn default() -> Self {
+        Self { lights: Source::Game, haptics: true, triggers: Source::Game }
+    }
+}
+
+impl Feedback {
+    /// Feedback that forwards nothing (the old "forward feedback: off").
+    pub const NONE: Self = Self { lights: Source::Periph, haptics: false, triggers: Source::Periph };
+
+    /// Drops from a game report what the user keeps for Periph (or turned off).
+    pub fn filter(&self, report: &mut OutputReport) {
+        if self.lights == Source::Periph {
+            report.drop_lights();
+        }
+        if !self.haptics {
+            report.drop_rumble();
+        }
+        if self.triggers == Source::Periph {
+            report.drop_triggers();
+        }
+    }
+
+    fn periph(&self, section: Section) -> bool {
+        match section {
+            Section::Lightbar | Section::PlayerLeds | Section::MicLed => self.lights == Source::Periph,
+            Section::Left | Section::Right => self.triggers == Source::Periph,
+        }
+    }
 }
 
 /// Every effect setting; part of the driver config and saved to disk.
@@ -114,6 +201,7 @@ impl Lightbar {
         let phase = (t / period).fract();
         let (base, level) = match self.mode {
             LightMode::None => return None,
+            LightMode::Off => ([0, 0, 0], 0.0),
             LightMode::Static => (self.color, 1.0),
             LightMode::Breathing => (self.color, 0.5 - 0.5 * (std::f32::consts::TAU * phase).cos()),
             LightMode::Strobe => (self.color, if phase < 0.5 { 1.0 } else { 0.0 }),
@@ -163,15 +251,24 @@ pub struct Engine {
     started: Instant,
     last_sent: Option<Instant>,
     dirty: bool,
-    /// Sections the game has set since emulation started (only while forwarding feedback).
+    /// Sections the game has set since emulation started (in categories left to the game).
     pub game_owns: SectionFlags,
     /// Triggers to reset to "off" once (Periph stopped controlling them, or the game left).
     release: SectionFlags,
+    /// The lightbar was released from the boot animation (once per connection).
+    lightbar_released: bool,
 }
 
 impl Default for Engine {
     fn default() -> Self {
-        Self { started: Instant::now(), last_sent: None, dirty: true, game_owns: SectionFlags::default(), release: SectionFlags::default() }
+        Self {
+            started: Instant::now(),
+            last_sent: None,
+            dirty: true,
+            game_owns: SectionFlags::default(),
+            release: SectionFlags::default(),
+            lightbar_released: false,
+        }
     }
 }
 
@@ -208,17 +305,39 @@ impl Engine {
         now.duration_since(self.started).as_secs_f32()
     }
 
-    /// Sections to write over a forwarded game report: only Periph sections with override on.
-    pub fn overlay(&self, fx: &Effects, now: Instant) -> Sections {
-        self.sections(fx, now, |_, overrides| overrides)
+    /// A category was handed to Periph: it takes those sections back from the game, and
+    /// triggers the game had set that Periph does not control go back to off.
+    pub fn take_back(&mut self, fx: &Effects, fb: &Feedback) {
+        let owns = &mut self.game_owns;
+        if fb.triggers == Source::Periph {
+            if owns.left_trigger && fx.left_trigger.effect.is_none() {
+                self.release.left_trigger = true;
+            }
+            if owns.right_trigger && fx.right_trigger.effect.is_none() {
+                self.release.right_trigger = true;
+            }
+            owns.left_trigger = false;
+            owns.right_trigger = false;
+        }
+        if fb.lights == Source::Periph {
+            owns.lightbar = false;
+            owns.player_leds = false;
+            owns.mic_led = false;
+        }
+        self.dirty = true;
     }
 
-    /// Sections for Periph's own report. `game_forwarding`: emulation is on and forwards the
-    /// game's feedback, so sections the game owns are skipped unless overridden.
-    fn own(&self, fx: &Effects, now: Instant, game_forwarding: bool) -> Sections {
+    /// Sections to write over a forwarded game report: the categories kept for Periph.
+    pub fn overlay(&self, fx: &Effects, fb: &Feedback, now: Instant) -> Sections {
+        self.sections(fx, now, |section| fb.periph(section))
+    }
+
+    /// Sections for Periph's own report. `game_forwarding`: emulation is on, so sections the
+    /// game owns (in categories left to the game) are skipped.
+    fn own(&self, fx: &Effects, fb: &Feedback, now: Instant, game_forwarding: bool) -> Sections {
         let owns = self.game_owns;
-        let mut s = self.sections(fx, now, |section, overrides| {
-            overrides
+        let mut s = self.sections(fx, now, |section| {
+            fb.periph(section)
                 || !game_forwarding
                 || !match section {
                     Section::Lightbar => owns.lightbar,
@@ -238,36 +357,42 @@ impl Engine {
         s
     }
 
-    fn sections(&self, fx: &Effects, now: Instant, include: impl Fn(Section, bool) -> bool) -> Sections {
+    fn sections(&self, fx: &Effects, now: Instant, include: impl Fn(Section) -> bool) -> Sections {
         let mut s = Sections::default();
-        if include(Section::Lightbar, fx.lightbar.override_game) {
+        if include(Section::Lightbar) {
             s.lightbar = fx.lightbar.color_at(self.t(now));
         }
-        if fx.player_leds.enabled && include(Section::PlayerLeds, fx.player_leds.override_game) {
+        if fx.player_leds.enabled && include(Section::PlayerLeds) {
             s.player_leds = Some((fx.player_leds.mask, fx.player_leds.brightness));
         }
-        if fx.mic_led.enabled && include(Section::MicLed, fx.mic_led.override_game) {
-            s.mic_led = Some(fx.mic_led.on as u8);
+        if include(Section::MicLed) {
+            s.mic_led = fx.mic_led.value_at(self.t(now));
         }
-        if include(Section::Left, fx.left_trigger.override_game) {
+        if include(Section::Left) {
             s.left_trigger = fx.left_trigger.effect.as_ref().and_then(|e| e.encode().ok());
         }
-        if include(Section::Right, fx.right_trigger.override_game) {
+        if include(Section::Right) {
             s.right_trigger = fx.right_trigger.effect.as_ref().and_then(|e| e.encode().ok());
         }
         s
     }
 
     /// Periph's own report, if one is due now (change, animation frame or keepalive).
-    pub fn due(&mut self, fx: &Effects, now: Instant, game_forwarding: bool) -> Option<OutputReport> {
+    pub fn due(&mut self, fx: &Effects, fb: &Feedback, now: Instant, game_forwarding: bool) -> Option<OutputReport> {
         let since = self.last_sent.map(|at| now.duration_since(at));
         let due = self.dirty
             || since.is_none_or(|d| d >= KEEPALIVE)
-            || (fx.lightbar.animated() && since.is_none_or(|d| d >= FRAME));
+            || ((fx.lightbar.animated() || fx.mic_led.mode == MicMode::Blink) && since.is_none_or(|d| d >= FRAME));
         if !due {
             return None;
         }
-        let sections = self.own(fx, now, game_forwarding);
+        let sections = self.own(fx, fb, now, game_forwarding);
+        if sections.lightbar.is_some() && !self.lightbar_released {
+            // Release the boot animation on its own first; the colour follows on the next poll.
+            self.lightbar_released = true;
+            self.last_sent = Some(now);
+            return Some(Sections { release_lightbar: true, ..Default::default() }.report());
+        }
         self.dirty = false;
         self.last_sent = Some(now);
         self.release = SectionFlags::default();
@@ -289,6 +414,8 @@ mod tests {
     use super::*;
     use periph_core::serde_json;
 
+    const FB: Feedback = Feedback { lights: Source::Game, haptics: true, triggers: Source::Game };
+
     fn weapon() -> TriggerEffect {
         TriggerEffect::Weapon { start: 2, end: 6, strength: 8 }
     }
@@ -307,6 +434,8 @@ mod tests {
         assert_eq!(l.color_at(0.5), Some([255, 128, 0]));
         l.mode = LightMode::Rainbow;
         assert_eq!(l.color_at(0.0), Some([255, 0, 0]));
+        l.mode = LightMode::Off;
+        assert_eq!(l.color_at(0.0), Some([0, 0, 0]), "switched off: dark, not left alone");
         l.mode = LightMode::None;
         assert_eq!(l.color_at(0.0), None);
     }
@@ -314,54 +443,92 @@ mod tests {
     #[test]
     fn nothing_is_sent_while_periph_controls_nothing() {
         let mut e = Engine::default();
-        assert!(e.due(&Effects::default(), Instant::now(), false).is_none());
+        assert!(e.due(&Effects::default(), &FB, Instant::now(), false).is_none());
     }
 
     #[test]
     fn own_report_carries_controlled_sections_and_keepalive() {
         let fx = Effects {
             lightbar: Lightbar { mode: LightMode::Static, color: [1, 2, 3], ..Default::default() },
-            right_trigger: Trigger { effect: Some(weapon()), override_game: false },
+            right_trigger: Trigger { effect: Some(weapon()) },
             ..Default::default()
         };
         let mut e = Engine::default();
         let t0 = Instant::now();
-        let r = e.due(&fx, t0, false).expect("dirty at start");
+        let release = e.due(&fx, &FB, t0, false).expect("dirty at start");
+        assert_eq!((release.raw[2], release.raw[39], release.raw[42]), (0, 0x02, 0x02), "boot animation released on its own");
+        let r = e.due(&fx, &FB, t0, false).expect("then the colour");
         assert_eq!(r.lightbar_rgb(), (1, 2, 3));
+        assert_eq!(r.raw[39] & 0x02, 0, "no further releases");
         assert_eq!(r.right_trigger()[0], 0x25);
-        assert!(e.due(&fx, t0 + Duration::from_millis(500), false).is_none(), "static: no resend before keepalive");
-        assert!(e.due(&fx, t0 + KEEPALIVE, false).is_some(), "keepalive");
+        assert!(e.due(&fx, &FB, t0 + Duration::from_millis(500), false).is_none(), "static: no resend before keepalive");
+        assert!(e.due(&fx, &FB, t0 + KEEPALIVE, false).is_some(), "keepalive");
     }
 
     #[test]
-    fn the_game_wins_unless_overridden() {
-        let mut fx = Effects {
+    fn each_category_goes_to_its_source() {
+        let fx = Effects {
             lightbar: Lightbar { mode: LightMode::Static, color: [9, 9, 9], ..Default::default() },
-            right_trigger: Trigger { effect: Some(weapon()), override_game: false },
+            right_trigger: Trigger { effect: Some(weapon()) },
             ..Default::default()
         };
         let mut e = Engine::default();
         e.game_owns = SectionFlags { lightbar: true, right_trigger: true, ..Default::default() };
         let now = Instant::now();
-        // Forwarding: the game owns both sections and nothing is overridden.
-        assert!(e.due(&fx, now, true).is_none());
-        assert!(e.overlay(&fx, now).is_empty());
-        // Override the right trigger: Periph's weapon goes over every game report.
-        fx.right_trigger.override_game = true;
+        // Both left to the game: it owns both sections, Periph sends nothing over them.
+        assert!(e.due(&fx, &FB, now, true).is_none());
+        assert!(e.overlay(&fx, &FB, now).is_empty());
+        // Triggers kept for Periph: its weapon goes over every game report.
+        let fb = Feedback { triggers: Source::Periph, ..FB };
         e.touch();
-        let r = e.due(&fx, now, true).unwrap();
+        let r = e.due(&fx, &fb, now, true).unwrap();
         assert_eq!(r.right_trigger()[0], 0x25);
         assert_eq!(r.raw[2] & 0x04, 0, "lightbar still left to the game");
-        let overlay = e.overlay(&fx, now);
+        let overlay = e.overlay(&fx, &fb, now);
         assert!(overlay.right_trigger.is_some() && overlay.lightbar.is_none());
+    }
+
+    #[test]
+    fn filter_drops_what_periph_keeps() {
+        let mut raw = [0u8; 48];
+        raw[0] = 0x02;
+        raw[1] = 0x01 | 0x04 | 0x08; // rumble + both triggers
+        raw[2] = 0x04; // lightbar
+        raw[3] = 100;
+        let game = OutputReport::parse(&raw).unwrap();
+
+        let mut r = game;
+        FB.filter(&mut r);
+        assert_eq!(r, game, "everything left to the game passes untouched");
+
+        let mut r = game;
+        Feedback { lights: Source::Periph, haptics: false, ..FB }.filter(&mut r);
+        assert_eq!((r.raw[1], r.raw[2], r.rumble_update()), (0x0C, 0, None));
+
+        let mut r = game;
+        Feedback::NONE.filter(&mut r);
+        assert!(r.is_noop());
+    }
+
+    #[test]
+    fn taking_triggers_back_resets_the_games() {
+        let fx = Effects::default();
+        let mut e = Engine::default();
+        e.game_owns = SectionFlags { right_trigger: true, lightbar: true, ..Default::default() };
+        let fb = Feedback { triggers: Source::Periph, ..FB };
+        e.take_back(&fx, &fb);
+        let r = e.due(&fx, &fb, Instant::now(), true).unwrap();
+        assert_eq!(r.right_trigger()[0], 0x05, "back to off");
+        assert_eq!(r.raw[2], 0, "the game keeps the lightbar");
+        assert!(e.game_owns.lightbar && !e.game_owns.right_trigger);
     }
 
     #[test]
     fn sections_the_game_never_set_stay_with_periph() {
         let fx = Effects { lightbar: Lightbar { mode: LightMode::Static, color: [5, 5, 5], ..Default::default() }, ..Default::default() };
-        let mut e = Engine::default();
+        let mut e = Engine { lightbar_released: true, ..Default::default() };
         e.game_owns = SectionFlags { right_trigger: true, ..Default::default() };
-        assert_eq!(e.due(&fx, Instant::now(), true).unwrap().lightbar_rgb(), (5, 5, 5));
+        assert_eq!(e.due(&fx, &FB, Instant::now(), true).unwrap().lightbar_rgb(), (5, 5, 5));
     }
 
     #[test]
@@ -370,11 +537,11 @@ mod tests {
         let mut e = Engine::default();
         let t0 = Instant::now();
         e.release_trigger(true);
-        let r = e.due(&fx, t0, false).unwrap();
+        let r = e.due(&fx, &FB, t0, false).unwrap();
         assert_eq!(r.left_trigger()[0], 0x05);
         assert_eq!(r.raw[1], 0x08);
         e.touch();
-        assert!(e.due(&fx, t0, false).is_none(), "released only once");
+        assert!(e.due(&fx, &FB, t0, false).is_none(), "released only once");
     }
 
     #[test]
@@ -383,7 +550,7 @@ mod tests {
         let mut e = Engine::default();
         e.game_owns = SectionFlags { left_trigger: true, lightbar: true, ..Default::default() };
         e.game_left(&fx);
-        let r = e.due(&fx, Instant::now(), false).unwrap();
+        let r = e.due(&fx, &FB, Instant::now(), false).unwrap();
         assert_eq!(r.left_trigger()[0], 0x05);
         assert_eq!(r.raw[1], 0x08, "only the left trigger");
         assert_eq!(r.raw[2], 0, "lightbar is not reset");
@@ -392,11 +559,25 @@ mod tests {
     #[test]
     fn animation_frames() {
         let fx = Effects { lightbar: Lightbar { mode: LightMode::Rainbow, ..Default::default() }, ..Default::default() };
+        let mut e = Engine { lightbar_released: true, ..Default::default() };
+        let t0 = Instant::now();
+        assert!(e.due(&fx, &FB, t0, false).is_some());
+        assert!(e.due(&fx, &FB, t0 + Duration::from_millis(10), false).is_none());
+        assert!(e.due(&fx, &FB, t0 + FRAME, false).is_some());
+    }
+
+    #[test]
+    fn mic_led_modes() {
+        let mut mic = MicLed { mode: MicMode::Blink, interval_ms: 250 };
+        assert_eq!((mic.value_at(0.1), mic.value_at(0.3), mic.value_at(0.6)), (Some(1), Some(0), Some(1)));
+        mic.mode = MicMode::Auto;
+        assert_eq!(mic.value_at(0.0), None, "never set: left alone");
+        assert!(MicLed { interval_ms: 50, ..mic }.validate().is_err());
+        let fx = Effects { mic_led: MicLed { mode: MicMode::Blink, interval_ms: 500 }, ..Default::default() };
         let mut e = Engine::default();
         let t0 = Instant::now();
-        assert!(e.due(&fx, t0, false).is_some());
-        assert!(e.due(&fx, t0 + Duration::from_millis(10), false).is_none());
-        assert!(e.due(&fx, t0 + FRAME, false).is_some());
+        assert_eq!(e.due(&fx, &FB, t0, false).unwrap().mic_led(), 1);
+        assert!(e.due(&fx, &FB, t0 + FRAME, false).is_some(), "blinking: sent every frame");
     }
 
     #[test]
@@ -405,9 +586,8 @@ mod tests {
             r#"{"lightbar":{"mode":"breathing","color":[255,0,0],"brightness":60,"speed":3,"override":true},
                 "rightTrigger":{"effect":{"kind":"bow","start":1,"end":8,"strength":5,"snap":8},"override":false}}"#,
         )
-        .unwrap();
+        .unwrap(); // "override" comes from older saved configs and is ignored
         assert_eq!(fx.lightbar.mode, LightMode::Breathing);
-        assert!(fx.lightbar.override_game);
         assert!(matches!(fx.right_trigger.effect, Some(TriggerEffect::Bow { .. })));
         assert_eq!(fx.left_trigger, Trigger::default(), "missing sections default");
     }

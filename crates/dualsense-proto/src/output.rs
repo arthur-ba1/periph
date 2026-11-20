@@ -56,6 +56,11 @@ impl OutputReport {
         self.raw[44]
     }
 
+    /// Player/mute LED brightness byte (0 high, 1 medium, 2 low).
+    pub fn led_brightness(&self) -> u8 {
+        self.raw[43]
+    }
+
     pub fn right_trigger(&self) -> &[u8] {
         &self.raw[RIGHT_TRIGGER_OFFSET..RIGHT_TRIGGER_OFFSET + TRIGGER_BLOCK_LEN]
     }
@@ -68,6 +73,31 @@ impl OutputReport {
     /// `Some(false)` stops it, `None` leaves the motors as they were (rumble bits not set).
     pub fn rumble_update(&self) -> Option<bool> {
         (self.raw[1] & VALID0_RUMBLE != 0).then(|| self.raw[3] != 0 || self.raw[4] != 0)
+    }
+
+    /// Clears the rumble valid bits and motor bytes: the controller ignores this report's
+    /// vibration (the motors keep their current state).
+    pub fn drop_rumble(&mut self) {
+        self.raw[1] &= !VALID0_RUMBLE;
+        self.raw[3] = 0;
+        self.raw[4] = 0;
+    }
+
+    /// Clears the valid bits of the lightbar, player LEDs and mic LED (and their control bits
+    /// in byte 39): the controller keeps its current lights.
+    pub fn drop_lights(&mut self) {
+        self.raw[2] &= !(0x01 | 0x04 | 0x10);
+        self.raw[39] &= !0x03;
+    }
+
+    /// Clears both adaptive trigger valid bits: the triggers keep their current effect.
+    pub fn drop_triggers(&mut self) {
+        self.raw[1] &= !(0x04 | 0x08);
+    }
+
+    /// No section is flagged valid, so sending this report would change nothing.
+    pub fn is_noop(&self) -> bool {
+        self.raw[1] == 0 && self.raw[2] == 0 && self.raw[39] == 0
     }
 
     /// A report that stops both motors and touches nothing else: only the compatible-vibration
@@ -138,5 +168,36 @@ mod tests {
         assert_eq!(stop.raw[2], 0);
         assert_eq!(stop.raw[39], 0);
         assert!(stop.raw[2..].iter().all(|&b| b == 0));
+    }
+
+    #[test]
+    fn drop_clears_only_its_category() {
+        // a game report setting rumble, both triggers, lightbar, player and mic LEDs
+        let mut raw = [0u8; 48];
+        raw[0] = 0x02;
+        raw[1] = 0x01 | 0x04 | 0x08;
+        raw[2] = 0x01 | 0x04 | 0x10 | 0x02; // 0x02: an unrelated control bit, kept
+        raw[3] = 90;
+        raw[39] = 0x03;
+        let full = OutputReport::parse(&raw).unwrap();
+
+        let mut r = full;
+        r.drop_rumble();
+        assert_eq!((r.raw[1], r.rumble_update()), (0x0C, None));
+        assert_eq!(r.raw[2], full.raw[2]);
+
+        let mut r = full;
+        r.drop_lights();
+        assert_eq!((r.raw[1], r.raw[2], r.raw[39]), (0x0D, 0x02, 0));
+
+        let mut r = full;
+        r.drop_triggers();
+        assert_eq!((r.raw[1], r.raw[2]), (0x01, full.raw[2]));
+
+        r.drop_rumble();
+        r.drop_lights();
+        assert!(!r.is_noop()); // the unrelated control bit is still there
+        r.raw[2] = 0;
+        assert!(r.is_noop());
     }
 }

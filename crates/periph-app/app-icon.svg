@@ -1,34 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Periph app icon: a keycap and a mouse side by side (keyboard + mouse), Geist-style dark tile. -->
+  <!-- Periph app icon: a "P" whose bowl is a ring (the periphery) with one live device on it
+       in the accent blue. Device-agnostic on purpose, so it stays legible at 16 px.
+       The tile fills the whole canvas (no margin) so it matches other taskbar icons in size. -->
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#262626"/>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2="1024">
+      <stop offset="0" stop-color="#2a2a2a"/>
       <stop offset="1" stop-color="#0a0a0a"/>
     </linearGradient>
     <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
-      <stop offset="1" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0.06"/>
     </linearGradient>
-    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#3291ff" stop-opacity="0.55"/>
-      <stop offset="1" stop-color="#3291ff" stop-opacity="0"/>
-    </radialGradient>
   </defs>
 
-  <rect x="40" y="40" width="944" height="944" rx="220" fill="url(#bg)"/>
-  <rect x="42" y="42" width="940" height="940" rx="218" fill="none" stroke="url(#edge)" stroke-width="4"/>
+  <rect width="1024" height="1024" rx="232" fill="url(#bg)"/>
+  <rect x="3" y="3" width="1018" height="1018" rx="229" fill="none" stroke="url(#edge)" stroke-width="6"/>
 
-  <g fill="none" stroke="#ffffff" stroke-width="44" stroke-linecap="round" stroke-linejoin="round">
-    <!-- keycap -->
-    <rect x="164" y="388" width="372" height="416" rx="92"/>
-    <path d="M272 494h96"/>
-    <!-- mouse -->
-    <path d="M732 236c-74 0-118 51-118 128v290c0 80 50 130 118 130s118-50 118-130V364c0-77-44-128-118-128Z"/>
-    <path d="M732 246v118"/>
+  <g fill="none" stroke="#ffffff" stroke-width="112" stroke-linecap="round">
+    <path d="M300 820V420"/>
+    <circle cx="512" cy="420" r="212"/>
   </g>
-  <!-- accent: the "live" blue light under the keycap legend and on the wheel -->
-  <circle cx="732" cy="320" r="70" fill="url(#glow)"/>
-  <rect x="712" y="282" width="40" height="76" rx="20" fill="#3291ff"/>
-  <circle cx="320" cy="494" r="110" fill="url(#glow)" opacity="0.6"/>
-  <path d="M272 494h96" stroke="#3291ff" stroke-width="44" stroke-linecap="round"/>
+  <!-- the live device: accent dot on the ring, cut out from the ring by a tile-colored halo -->
+  <circle cx="662" cy="270" r="96" fill="url(#bg)"/>
+  <circle cx="662" cy="270" r="66" fill="#3291ff"/>
 </svg>

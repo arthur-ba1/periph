@@ -1,10 +1,11 @@
 // DualSense state: a view over the generic device registry.
 // Rust side: crates/periph-app/src/drivers/dualsense.rs; contract in docs/dualsense-protocol.md.
 import { deviceState, send as sendTo } from "$lib/device-state.svelte.js";
+import { EMULATION_MODELS } from "./emulation-models.js";
 
 /** { connected, product, serial, reason, code, config, status, busy } fed by the "dualsense" driver.
- *  config: { emulation, forwardFeedback, hidePhysical }
- *  status: { virtualActive, batteryRaw, outputReports, hidHide: "missing" | "off" | "hiding" } */
+ *  config: { emulation, feedback: { lights, haptics, triggers }, hidePhysical, ...effects }
+ *  status: { virtualActive, batteryRaw, outputReports, hidHide, controls } */
 export const ds = deviceState("dualsense");
 
 /** Send a command. `type` matches the Rust `Cmd` enum (camelCase). */
@@ -21,6 +22,27 @@ export function battery(raw) {
   return { percent: Math.min(level * 10 + 5, 100), charging: state === 1, full: false };
 }
 
+// ---- UI preferences (local only) ----
+
+/** Controller colourways the 3D view can show (recoloured from the model's own textures). */
+export const MODELS = ["white", "midnight"];
+const savedModel = globalThis.localStorage?.getItem("dualsense.model");
+const savedTarget = globalThis.localStorage?.getItem("dualsense.emulationTarget");
+export const prefs = $state({
+  model: MODELS.includes(savedModel) ? savedModel : "white",
+  emulationTarget: Object.hasOwn(EMULATION_MODELS, savedTarget) ? savedTarget : "dualsense",
+});
+export function setModel(m) {
+  prefs.model = m;
+  localStorage.setItem("dualsense.model", m);
+}
+
+export function setEmulationTarget(target) {
+  if (!Object.hasOwn(EMULATION_MODELS, target)) return;
+  prefs.emulationTarget = target;
+  localStorage.setItem("dualsense.emulationTarget", target);
+}
+
 // ---- controller stage (controller-view.svelte) ----
 
 /** Parts the stage can fly to (camera shots in controller-3d.svelte) and their config section. */
@@ -34,8 +56,10 @@ export const PARTS = {
   r2: { section: "rightTrigger" },
 };
 
-/** Shared stage state. focus: part key; flash: bumped on every change so the stage pulses the part that changed. */
-export const ui = $state({ focus: "overview", flash: { part: null, n: 0 } });
+/** Shared stage state. focus: part key; flash: bumped on every change so the stage pulses the
+ *  part that changed; slot: the current page's stage placeholder (the persistent stage layer
+ *  sits over it); virtual: show the emulated twin. */
+export const ui = $state({ focus: "overview", flash: { part: null, n: 0 }, slot: null, virtual: false, preview: null });
 
 /** Point the stage at a part. */
 export function focusPart(part) {
@@ -120,7 +144,11 @@ export function zonesOf(e) {
 }
 
 /** Player LED patterns (bit 0 = leftmost LED), as the PlayStation shows player numbers. */
-export const PLAYER_PATTERNS = [0x04, 0x0a, 0x15, 0x1b, 0x1f];
+/** Player LED patterns (bit 0 = leftmost). The pad mirrors the LEDs around the centre, so only
+ *  symmetric masks exist: none, player 1-4, all. */
+export const PLAYER_PATTERNS = [0x00, 0x04, 0x0a, 0x15, 0x1b, 0x1f];
+/** LED `i` and its mirror image, toggled together. */
+export const mirrorBit = (i) => (1 << i) | (1 << (4 - i));
 
 /** Lightbar colour presets. */
 export const COLORS = [[255, 0, 0], [255, 120, 0], [255, 220, 0], [0, 255, 60], [0, 200, 255], [0, 80, 255], [140, 0, 255], [255, 0, 160], [255, 255, 255]];
@@ -134,12 +162,13 @@ export const demo = {
     product: "DualSense Wireless Controller",
     serial: "",
     config: {
-      emulation: false, forwardFeedback: true, hidePhysical: true,
-      lightbar: { mode: "breathing", color: [0, 80, 255], brightness: 100, speed: 5, override: false },
-      playerLeds: { enabled: true, mask: 0x04, brightness: 0, override: false },
-      micLed: { enabled: false, on: false, override: false },
-      leftTrigger: { effect: null, override: false },
-      rightTrigger: { effect: { kind: "weapon", start: 2, end: 6, strength: 8 }, override: false },
+      emulation: false, hidePhysical: true,
+      feedback: { lights: "game", haptics: true, triggers: "game" },
+      lightbar: { mode: "breathing", color: [0, 80, 255], brightness: 100, speed: 5 },
+      playerLeds: { enabled: true, mask: 0x04, brightness: 0 },
+      micLed: { mode: "auto", intervalMs: 500 },
+      leftTrigger: { effect: null },
+      rightTrigger: { effect: { kind: "weapon", start: 2, end: 6, strength: 8 } },
     },
     status: { virtualActive: false, batteryRaw: 0x07, outputReports: 0, hidHide: "off" },
   },
@@ -150,7 +179,7 @@ export const demo = {
       s.hidHide = value && c.hidePhysical ? "hiding" : "off";
       if (value) s.outputReports += 4;
     }
-    if (type === "forwardFeedback") c.forwardFeedback = value;
+    if (type === "feedback") c.feedback = value;
     if (type === "hidePhysical") {
       c.hidePhysical = value;
       s.hidHide = value && c.emulation ? "hiding" : "off";

@@ -1,0 +1,128 @@
+{
+  "tabs": {
+    "dpi": "DPI",
+    "performance": "Desempenho",
+    "sensor": "Sensor",
+    "buttons": "Botões"
+  },
+  "waiting": {
+    "asleepTitle": "O mouse está dormindo",
+    "asleepText": "O dongle está conectado, mas o mouse não respondeu. Mexa ou clique no mouse para acordá-lo; o app tenta de novo sozinho.",
+    "reading": "Lendo configuração…",
+    "searching": "Procurando o VT2 Max",
+    "text": "Conecte o dongle ou o cabo. Se o A HUB estiver aberto, feche-o, porque os dois não podem usar o mouse ao mesmo tempo."
+  },
+  "card": {
+    "wired": "Cabo",
+    "wireless": "Sem fio",
+    "asleep": "Dormindo",
+    "searching": "Procurando",
+    "battery": "Bateria",
+    "charging": "Carregando",
+    "serial": "S/N {serial}",
+    "low": "Bateria fraca",
+    "color": "Cor do mouse"
+  },
+  "dpi": {
+    "title": "Sensibilidade",
+    "description": "Defina os estágios de DPI que os botões DPI± do mouse alternam.",
+    "current": "DPI atual",
+    "stageOf": "Estágio {n}/{total}",
+    "stage": "Estágio {n}",
+    "stageShort": "E{n}",
+    "range": "De 50 a 26.000 DPI, em passos de 10.",
+    "now": "Atual:"
+  },
+  "performance": {
+    "title": "Desempenho",
+    "description": "Quantas vezes por segundo o mouse envia a posição ao PC.",
+    "polling": "Polling rate",
+    "pollingNote": "Taxas acima de 1 kHz exigem o dongle de alta velocidade.",
+    "interval": "Intervalo entre reports",
+    "battery": "Consumo de bateria",
+    "drain": [
+      "Mínimo",
+      "Muito baixo",
+      "Baixo",
+      "Moderado",
+      "Alto",
+      "Muito alto",
+      "Máximo"
+    ],
+    "tipLabel": "Recomendação:",
+    "tip": "1–2 kHz para uso diário. 4–8 kHz reduzem a latência em poucos décimos de milissegundo, mas consomem muito mais bateria e CPU."
+  },
+  "sensor": {
+    "title": "Sensor",
+    "description": "Ajustes de rastreamento e resposta dos botões.",
+    "motionSync": "Motion Sync",
+    "motionSyncDesc": "Sincroniza a leitura do sensor com o polling. Movimento mais consistente, ~1 ms a mais.",
+    "linear": "Correção linear",
+    "linearDesc": "Angle snapping: endireita traços que deveriam ser retos.",
+    "ripple": "Correção de ripple",
+    "rippleDesc": "Suaviza o ruído do sensor em DPI alto.",
+    "glass": "Modo vidro",
+    "glassDesc": "Melhora o rastreamento em superfícies de vidro. Desligue em mousepads comuns.",
+    "lod": "Lift-off distance",
+    "debounce": "Debounce ao pressionar",
+    "debounceDesc": "Tempo que o mouse espera para confirmar um clique. Valores baixos respondem mais rápido; valores altos evitam duplo clique acidental.",
+    "onRelease": "Ao soltar: {ms} ms"
+  },
+  "buttons": {
+    "title": "Botões",
+    "description": "Escolha um botão no mouse ou no menu e defina o que ele faz.",
+    "viewTop": "Ver de cima",
+    "viewBottom": "Ver embaixo",
+    "bottomHint": "Parte de baixo · botão DIY",
+    "button": "Botão",
+    "locked": "A rolagem usa um código de função que ainda não foi decodificado. Por segurança, ela não pode ser alterada aqui.",
+    "keyboardKey": "Tecla do teclado",
+    "key": "Tecla",
+    "extraKeys": "Teclas extras F13–F24, que não existem no teclado e são ótimas para atalhos",
+    "leftWarning": "Trocar o clique esquerdo pode deixar o mouse difícil de usar.",
+    "swap": "Trocar",
+    "names": {
+      "left": "Botão esquerdo",
+      "middle": "Clique da roda",
+      "right": "Botão direito",
+      "dpiUp": "DPI +",
+      "dpiDown": "DPI −",
+      "forward": "Lateral frente",
+      "back": "Lateral trás",
+      "wheelUp": "Roda para cima",
+      "wheelDown": "Roda para baixo",
+      "diy": "Botão DIY"
+    },
+    "actions": {
+      "left": "Clique esquerdo",
+      "right": "Clique direito",
+      "middle": "Clique do meio",
+      "back": "Voltar",
+      "forward": "Avançar",
+      "dpiUp": "DPI +",
+      "dpiDown": "DPI −",
+      "off": "Desativado",
+      "key": "Tecla {key}",
+      "other": "Rolagem (padrão)"
+    },
+    "colorVariant": "Cor do mouse"
+  },
+  "tray": {
+    "header": "VT2 Max  ·  {link}  ·  bateria {battery}%{charging}  ·  {dpi} DPI",
+    "wired": "cabo",
+    "wireless": "sem fio",
+    "charging": " (carregando)",
+    "connected": "VT2 Max  ·  conectado",
+    "disconnected": "VT2 Max  ·  desconectado",
+    "dpi": "DPI",
+    "polling": "Polling rate",
+    "motionSync": "Motion Sync",
+    "glass": "Modo vidro",
+    "refresh": "Reler configuração"
+  },
+  "errors": {
+    "unsupportedAction": "ação não suportada",
+    "keyOutOfRange": "tecla fora do intervalo"
+  },
+  "model3dUnavailable": "Modelo 3D indisponível"
+}

@@ -1,10 +1,15 @@
 import { mount } from "svelte";
 import "./app.css";
-import App from "./App.svelte";
-import IconSheet from "./lib/icons/IconSheet.svelte";
-import Mouse3DSheet from "./devices/vt2/components/Mouse3DSheet.svelte";
 
 document.documentElement.classList.add("dark");
 const q = location.search;
-const Root = q.includes("icons") ? IconSheet : q.includes("3d") ? Mouse3DSheet : App;
+// The tray flyout window (flyout.rs) loads the same page; it only needs src/tray/.
+const tray = q.includes("tray") || window.__TAURI_INTERNALS__?.metadata?.currentWindow?.label === "tray";
+const Root = tray
+  ? (await import("./tray/Flyout.svelte")).default
+  : q.includes("icons")
+    ? (await import("./lib/icons/IconSheet.svelte")).default
+    : q.includes("3d")
+      ? (await import("./devices/vt2/components/Mouse3DSheet.svelte")).default
+      : (await import("./App.svelte")).default;
 export default mount(Root, { target: document.getElementById("app") });

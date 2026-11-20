@@ -10,6 +10,7 @@
   // Keys show the keycode of the given layer.
   import { onMount } from "svelte";
   import { describe, keycodeFromEvent } from "./keycodes.js";
+  import { t } from "$lib/i18n.svelte.js";
 
   let {
     def,
@@ -19,6 +20,8 @@
     unit = 44,
     // RGB preview: { effect: VIA option name, h, s: 0..255 (QMK HSV), v: 0..1 brightness, speed: 0..1 }
     light = null,
+    duelColors = null, // [left, right] CSS colors for the color duel preview
+    wordKeys = null, // indices in layout order for each step of the word preview
     tilt = true,
     encoders = null, // [encoder] = [ccw, cw] for the shown layer
   } = $props();
@@ -37,7 +40,7 @@
     flashTimer = setTimeout(() => (flash = null), 700);
   }
   const knobTitle = (e, d) =>
-    encoders?.[e] ? `Pressionar: ${d.long} · ↺ ${encLabel(e, false)} · ↻ ${encLabel(e, true)}` : d.long;
+    encoders?.[e] ? t("via.keymap.knobTitle", { press: d.long, ccw: encLabel(e, false), cw: encLabel(e, true) }) : d.long;
 
   // ---------------- RGB preview ----------------
   // QMK colors are HSV with value = brightness. HSV(h, s, 1) == HSL(h, 100%, 100 - 50*s %),
@@ -51,8 +54,11 @@
   };
   const RAINBOW = new Set(["all", "lr", "ud", "chevron", "outin", "outin2", "pinwheel", "spiral", "beacon2", "beacon"]);
   const REACTIVE = new Set(["heat", "simple", "reactive", "cross", "splash"]);
+  let duel = $derived(duelColors !== null);
 
   let fx = $derived.by(() => {
+    if (duel) return "duel";
+    if (wordKeys) return wordKeys.length ? "word" : null;
     if (!light || !light.effect || light.effect === "All Off" || light.v <= 0) return null;
     return FX[light.effect] ?? (/CYCLE|RAINBOW/.test(light.effect) ? "lr" : "solid");
   });
@@ -63,9 +69,69 @@
   });
   let lightVars = $derived.by(() => {
     if (!fx) return "";
+    if (duel) return "--S:100%; --a:0.85;";
+    if (fx === "word") return "--H:185; --L:50%; --S:100%; --a:0.9;";
     const a = Math.pow(light.v, 0.6); // perceptual: low brightness still reads, 0 is off
     return `--H:${Math.round((light.h / 255) * 360)}; --L:${(100 - 50 * (light.s / 255)).toFixed(1)}%; --S:${Math.round((light.s / 255) * 100)}%; --a:${a.toFixed(3)}; --dur:${Math.round(durMs)}ms;`;
   });
+
+  let wordKey = $state(null);
+  $effect(() => {
+    const sequence = wordKeys;
+    if (!sequence?.length) return;
+    let index = 0;
+    let timer;
+    function playStep() {
+      wordKey = sequence[index];
+      timer = setTimeout(() => {
+        wordKey = null;
+        index = (index + 1) % sequence.length;
+        timer = setTimeout(playStep, index === 0 ? 800 : 100);
+      }, 380);
+    }
+    playStep();
+    return () => {
+      clearTimeout(timer);
+      wordKey = null;
+    };
+  });
+
+  const DUEL_CENTER = 0.5;
+  const DUEL_STEP = 0.07;
+  const DUEL_IDLE_MS = 600;
+  const DUEL_RETURN_MS = 900;
+  const keyCenterX = (k) => (k.x + k.w / 2) / def.keys.width;
+  let boundary = $state(DUEL_CENTER);
+  let returnTimer;
+  let returnFrame;
+
+  function stopReturn() {
+    clearTimeout(returnTimer);
+    cancelAnimationFrame(returnFrame);
+  }
+
+  $effect(() => {
+    if (!duel) return;
+    boundary = DUEL_CENTER;
+    return stopReturn;
+  });
+
+  function duelHit(k) {
+    stopReturn();
+    const step = keyCenterX(k) < DUEL_CENTER ? DUEL_STEP : -DUEL_STEP;
+    boundary = Math.max(0.18, Math.min(0.82, boundary + step));
+    returnTimer = setTimeout(() => {
+      const from = boundary;
+      const start = performance.now();
+      function returnToCenter(now) {
+        const progress = Math.min(1, (now - start) / DUEL_RETURN_MS);
+        const remaining = (1 - progress) ** 2;
+        boundary = DUEL_CENTER + (from - DUEL_CENTER) * remaining;
+        if (progress < 1) returnFrame = requestAnimationFrame(returnToCenter);
+      }
+      returnFrame = requestAnimationFrame(returnToCenter);
+    }, DUEL_IDLE_MS);
+  }
 
   const rnd = (i) => { const x = Math.sin(i * 12.9898 + 4.1) * 43758.5453; return x - Math.floor(x); };
   // per-key phase of the rainbow wave (0..1), from the key's centre in the layout
@@ -90,6 +156,11 @@
   }
   function capLight(k, i) {
     if (!fx) return "";
+    if (duelColors) {
+      const blend = 0.5 + (boundary - keyCenterX(k)) / DUEL_STEP;
+      const left = Math.max(0, Math.min(1, blend));
+      return `--duel-color:color-mix(in oklch, ${duelColors[0]} ${(left * 100).toFixed(1)}%, ${duelColors[1]});`;
+    }
     if (RAINBOW.has(fx)) return `--ph:${phase(k).toFixed(3)};`;
     if (fx === "rain") return `--rd:${(rnd(i) * 6).toFixed(2)}; --rh:${Math.round((rnd(i + 99) - 0.5) * 120)};`;
     return "";
@@ -119,10 +190,20 @@
   }
   onMount(() => {
     const onKey = (e) => {
-      if (!fx || !REACTIVE.has(fx) || e.repeat) return;
+      if ((!duel && !REACTIVE.has(fx)) || e.repeat) return;
+      if (duel) {
+        if (e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+        if (e.code === "Tab" || e.code === "Escape") return;
+        if (e.target instanceof Element) {
+          if (e.target.closest("input, textarea, select, [contenteditable], [role=slider], [role=listbox], [data-color-picker]")) return;
+          if ((e.code === "Space" || e.code === "Enter") && e.target.closest("button, a, [role=button], [role=switch]")) return;
+        }
+      }
       const code = keycodeFromEvent(e);
       const k = code !== undefined && def.keys.list.find((o) => keymap?.[o.row]?.[o.col] === code);
-      if (k) hit(k);
+      if (!k) return;
+      if (duel) duelHit(k);
+      else hit(k);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -165,11 +246,18 @@
         class:enc={k.encoder !== null}
         class:sel={selected === key}
         class:trans={code === 1}
+        class:word-key={fx === "word" && i === wordKey}
         style="left:{pad + k.x * unit}px; top:{pad + k.y * unit}px; width:{k.w * unit}px; height:{k.h * unit}px; {capLight(k, i)}"
         title={k.encoder !== null ? knobTitle(k.encoder, d) : d.long}
         aria-label={k.encoder !== null ? knobTitle(k.encoder, d) : d.long}
-        onclick={() => onselect?.(key, k)}
-        onpointerdown={() => hit(k)}
+        onclick={() => {
+          if (duel) duelHit(k);
+          onselect?.(key, k);
+        }}
+        onkeydown={(e) => {
+          if (duel && e.key === "Enter" && e.repeat) e.preventDefault();
+        }}
+        onpointerdown={duel ? undefined : () => hit(k)}
         onwheel={k.encoder !== null && !mini ? (ev) => wheel(ev, k.encoder) : undefined}
       >
         {#if fx}<span class="led"></span>{/if}
@@ -366,6 +454,8 @@
     --lc: hsl(var(--hue) 100% var(--L));
     --on: calc(var(--a) * var(--k));
   }
+  .fx-duel .cap { --lc: var(--duel-color); }
+  .fx-word .cap:not(.word-key) { --k: 0; }
   .led {
     position: absolute;
     inset: calc(var(--u) * -0.02);
@@ -391,7 +481,7 @@
   /* light passing through the legend: colored text + a soft bloom around it */
   .lit .lbl, .lit .klbl {
     /* same hue+saturation at mid lightness, so pale / white light stays readable on white caps */
-    --lg: hsl(var(--hue) var(--S) 50%);
+    --lg: var(--duel-color, hsl(var(--hue) var(--S) 50%));
     color: color-mix(in oklch, var(--lg) calc(var(--on) * 92%), var(--legend));
     text-shadow:
       0 0 calc(var(--u) * 0.05) color-mix(in oklch, var(--lc) calc(var(--on) * 90%), transparent),
@@ -406,7 +496,7 @@
       0 calc(var(--u) * 0.5) calc(var(--u) * 0.9) calc(var(--u) * -0.2) rgb(0 0 0 / 0.55),
       0 0 calc(var(--u) * 1.4) calc(var(--u) * -0.3) color-mix(in oklch, hsl(var(--H) 100% var(--L)) calc(var(--a) * 50%), transparent);
   }
-  .case.lit.rainbow, .case.lit.fx-heat { box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 #d8d8d3, 0 calc(var(--u) * 0.16) 0 #cfcfca, 0 calc(var(--u) * 0.16 + 1px) 0 #b9b9b4, 0 calc(var(--u) * 0.5) calc(var(--u) * 0.9) calc(var(--u) * -0.2) rgb(0 0 0 / 0.55); }
+  .case.lit.rainbow, .case.lit.fx-heat, .case.lit.fx-duel, .case.lit.fx-word { box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 #d8d8d3, 0 calc(var(--u) * 0.16) 0 #cfcfca, 0 calc(var(--u) * 0.16 + 1px) 0 #b9b9b4, 0 calc(var(--u) * 0.5) calc(var(--u) * 0.9) calc(var(--u) * -0.2) rgb(0 0 0 / 0.55); }
 
   .rainbow .cap { animation: spin var(--dur) linear infinite; }
   .fx-breathe .cap { animation: breathe var(--dur) ease-in-out infinite; }

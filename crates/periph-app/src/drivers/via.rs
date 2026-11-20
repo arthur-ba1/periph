@@ -2,7 +2,7 @@
 //! Definitions are the VIA JSON files in app/src/devices/via/keyboards/ (embedded by build.rs,
 //! the frontend imports the same files) and are matched by VID/PID.
 
-use periph_core::{self as core, serde_json::{self, Value}, Connected, DeviceInfo, Driver, Kind, Session};
+use periph_core::{self as core, serde_json::{self, Value}, t, Absent, Connected, DeviceInfo, Driver, Kind, Session};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -141,7 +141,7 @@ impl Session for ViaSession {
     }
     /// keepalive: VIA has no status report, so ping it to notice an unplug
     fn poll(&mut self) -> anyhow::Result<Option<Value>> {
-        self.kb.uptime_ms().map_err(|_| anyhow::anyhow!("teclado desconectado"))?;
+        self.kb.uptime_ms().map_err(|_| anyhow::anyhow!(t("via.errors.disconnected")))?;
         Ok(None)
     }
     fn poll_interval(&self) -> Duration {
@@ -153,10 +153,10 @@ pub struct ViaDriver;
 
 impl Driver for ViaDriver {
     fn info(&self) -> DeviceInfo {
-        DeviceInfo { id: "via", name: "Teclado VIA", kind: Kind::Keyboard }
+        DeviceInfo { id: "via", name: "VIA keyboard", kind: Kind::Keyboard }
     }
     fn open(&self) -> anyhow::Result<(Box<dyn Session>, Connected)> {
-        let kb = Keyboard::open_any()?;
+        let kb = Keyboard::open_any().map_err(|e| Absent::new("notFound", e))?;
         let def = find_definition(kb.vendor_id, kb.product_id);
         let info = Connected { product: kb.product.clone(), serial: String::new() };
         Ok((Box::new(ViaSession { kb, def }), info))

@@ -5,8 +5,9 @@ use hidapi::{HidApi, HidDevice};
 use std::time::{Duration, Instant};
 use vt2_proto::{self as p, addr, ButtonAction, RespStatus, Status};
 
-/// Error text when the dongle answers but the mouse doesn't (UI matches on "dormindo").
-pub const MOUSE_ASLEEP: &str = "o mouse não respondeu (dormindo ou fora de alcance)";
+/// Error text when the dongle answers but the mouse doesn't (asleep or out of range).
+/// The driver maps it to the "asleep" state code.
+pub const MOUSE_ASLEEP: &str = "the mouse did not answer (asleep or out of range)";
 
 pub struct Vt2 {
     cmd: HidDevice,

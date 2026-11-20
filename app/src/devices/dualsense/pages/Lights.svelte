@@ -3,25 +3,29 @@
   import * as ToggleGroup from "$lib/components/ui/toggle-group/index.js";
   import { Switch } from "$lib/components/ui/switch/index.js";
   import { Slider } from "$lib/components/ui/slider/index.js";
+  import { Separator } from "$lib/components/ui/separator/index.js";
   import SettingRow from "$lib/components/setting-row.svelte";
-  import OverrideNote from "../override-note.svelte";
+  import SourceNote from "../source-note.svelte";
   import PageLayout from "../page-layout.svelte";
   import SectionTabs from "../section-tabs.svelte";
   import ColorPopover from "../color-popover.svelte";
-  import { ds, send, ui, focusPart, flashPart, partOf, COLORS, PLAYER_PATTERNS, toHex } from "../store.svelte.js";
+  import { ds, send, ui, focusPart, flashPart, partOf, COLORS, PLAYER_PATTERNS, mirrorBit, toHex } from "../store.svelte.js";
   import { t } from "$lib/i18n.svelte.js";
 
   const MODES = ["static", "breathing", "strobe", "rainbow"];
-  const SECTIONS = ["lightbar", "player", "mic"];
+  // player and mic LEDs share one section ("player"); a click on the mic callout opens it too
+  const SECTIONS = ["lightbar", "player"];
 
   let cfg = $derived(ds.config);
   let lb = $derived(cfg?.lightbar);
   let pl = $derived(cfg?.playerLeds);
+  /** Periph lights the lightbar ("none": never set, "off": kept dark). */
+  let lit = $derived(!!lb && lb.mode !== "none" && lb.mode !== "off");
   let mic = $derived(cfg?.micLed);
   /** Slider values while dragging (sent on release). */
   let drafts = $state({});
   /** The section shown follows the stage (a callout click switches it too). */
-  let section = $derived(SECTIONS.includes(ui.focus) ? ui.focus : "lightbar");
+  let section = $derived(ui.focus === "mic" ? "player" : SECTIONS.includes(ui.focus) ? ui.focus : "lightbar");
 
   /** Optimistic update of one effect section, then send it whole. */
   function update(key, patch) {
@@ -36,8 +40,9 @@
   function setLightbar(on) {
     if (on) update("lightbar", { mode: lastMode });
     else {
-      lastMode = lb.mode === "none" ? lastMode : lb.mode;
-      update("lightbar", { mode: "none" });
+      lastMode = lit ? lb.mode : lastMode;
+      // off = dark, not "leave it alone" (the pad would keep its last colour)
+      update("lightbar", { mode: "off" });
     }
   }
 
@@ -46,9 +51,8 @@
   let tabItems = $derived(
     cfg
       ? [
-          { value: "lightbar", label: t("dualsense.lights.lightbar"), icon: "lightbar", on: lb.mode !== "none" },
-          { value: "player", label: t("dualsense.lights.playerShort"), icon: "playerLeds", on: pl.enabled },
-          { value: "mic", label: t("dualsense.lights.micShort"), icon: "mic", on: mic.enabled },
+          { value: "lightbar", label: t("dualsense.lights.lightbar"), icon: "lightbar", on: lit },
+          { value: "player", label: t("dualsense.lights.playerShort"), icon: "playerLeds", on: pl.enabled || mic.mode === "on" || mic.mode === "blink" },
         ]
       : [],
   );
@@ -67,7 +71,7 @@
             <Card.Title>{t("dualsense.lights.lightbar")}</Card.Title>
           </div>
           <div class="flex items-center gap-3">
-            {#if lb.mode !== "none"}
+            {#if lit}
               <span
                 class="size-6 shrink-0 rounded-full border shadow-[0_0_5px_color-mix(in_srgb,var(--glow)_40%,transparent)] transition-[background,box-shadow] {lb.mode === 'rainbow' ? 'rainbow' : ''}"
                 style:background={preview}
@@ -75,12 +79,12 @@
                 aria-hidden="true"
               ></span>
             {/if}
-            <Switch checked={lb.mode !== "none"} onCheckedChange={setLightbar} aria-label={t("dualsense.lights.lightbar")} />
+            <Switch checked={lit} onCheckedChange={setLightbar} aria-label={t("dualsense.lights.lightbar")} />
           </div>
         </Card.Header>
         <Card.Content class="grid gap-4">
-          {#if lb.mode !== "none"}
-            <OverrideNote checked={lb.override} onchange={(v) => update("lightbar", { override: v })} />
+          {#if lit}
+            <SourceNote category="lights" />
             <ToggleGroup.Root type="single" variant="outline" class="w-full" value={lb.mode} onValueChange={(v) => v && update("lightbar", { mode: v })}>
               {#each MODES as m}
                 <ToggleGroup.Item value={m} class="min-w-0 flex-1 px-0.5 text-xs">{t(`dualsense.lights.modes.${m}`)}</ToggleGroup.Item>
@@ -126,18 +130,19 @@
           {/if}
         </Card.Content>
       </Card.Root>
-    {:else if section === "player"}
+    {:else}
       <Card.Root>
-        <Card.Header class="flex flex-row items-center justify-between gap-4">
-          <div>
-            <Card.Title>{t("dualsense.lights.player")}</Card.Title>
-          </div>
-          <Switch checked={pl.enabled} onCheckedChange={(v) => update("playerLeds", { enabled: v })} aria-label={t("dualsense.lights.player")} />
+        <Card.Header>
+          <Card.Title>{t("dualsense.lights.leds")}</Card.Title>
         </Card.Header>
         <Card.Content class="grid gap-4">
+          <SourceNote category="lights" />
+          <SettingRow title={t("dualsense.lights.player")}>
+            <Switch checked={pl.enabled} onCheckedChange={(v) => update("playerLeds", { enabled: v })} aria-label={t("dualsense.lights.player")} />
+          </SettingRow>
           {#if pl.enabled}
-            <OverrideNote checked={pl.override} onchange={(v) => update("playerLeds", { override: v })} />
-            <!-- same layout as the controller: the middle three close, the outer two set apart -->
+            <!-- same layout as the controller: the middle three close, the outer two set apart.
+                 The pad mirrors them around the centre, so a click lights the LED and its twin. -->
             <div class="flex items-center justify-center gap-1.5 rounded-lg bg-black/30 py-4">
               {#each [0, 1, 2, 3, 4] as i}
                 {@const on = (pl.mask >> i) & 1}
@@ -146,16 +151,25 @@
                   class="h-2.5 w-9 rounded-full border transition-[background,box-shadow] {i === 0 ? 'mr-7' : i === 4 ? 'ml-7' : ''} {on ? 'border-white bg-white shadow-[0_0_10px_rgba(255,255,255,0.7)]' : 'bg-muted/40'}"
                   aria-label={t("dualsense.lights.led", { n: i + 1 })}
                   aria-pressed={!!on}
-                  onclick={() => update("playerLeds", { mask: pl.mask ^ (1 << i) })}
+                  onclick={() => update("playerLeds", { mask: on ? pl.mask & ~mirrorBit(i) : pl.mask | mirrorBit(i) })}
                 ></button>
               {/each}
             </div>
-            <div class="grid grid-cols-5 gap-1.5">
-              {#each PLAYER_PATTERNS as mask, i}
-                <button type="button" class="hover:bg-muted rounded-md border px-1 py-1.5 text-xs transition-colors {pl.mask === mask ? 'border-foreground bg-muted' : ''}" onclick={() => update("playerLeds", { mask })}>
-                  {i < 4 ? t("dualsense.lights.playerN", { n: i + 1 }) : t("dualsense.lights.allLeds")}
-                </button>
-              {/each}
+            <!-- player 1–4 on one line, then none / all as their own group -->
+            {#snippet pattern(mask, label)}
+              <button type="button" class="hover:bg-muted min-w-0 truncate rounded-md border px-1 py-1.5 text-xs transition-colors {pl.mask === mask ? 'border-foreground bg-muted' : ''}" onclick={() => update("playerLeds", { mask })}>
+                {label}
+              </button>
+            {/snippet}
+            <div class="flex items-center gap-3">
+              <div class="grid flex-[4] grid-cols-4 gap-1.5">
+                {#each PLAYER_PATTERNS.slice(1, 5) as mask, i}{@render pattern(mask, t("dualsense.lights.playerN", { n: i + 1 }))}{/each}
+              </div>
+              <div class="bg-border h-5 w-px shrink-0"></div>
+              <div class="grid flex-[2] grid-cols-2 gap-1.5">
+                {@render pattern(PLAYER_PATTERNS[0], t("dualsense.lights.noLeds"))}
+                {@render pattern(PLAYER_PATTERNS[5], t("dualsense.lights.allLeds"))}
+              </div>
             </div>
             <SettingRow title={t("dualsense.lights.ledBrightness")}>
               <ToggleGroup.Root type="single" variant="outline" value={String(pl.brightness)} onValueChange={(v) => v && update("playerLeds", { brightness: +v })}>
@@ -165,22 +179,24 @@
               </ToggleGroup.Root>
             </SettingRow>
           {/if}
-        </Card.Content>
-      </Card.Root>
-    {:else}
-      <Card.Root>
-        <Card.Header class="flex flex-row items-center justify-between gap-4">
-          <div>
-            <Card.Title>{t("dualsense.lights.mic")}</Card.Title>
-          </div>
-          <Switch checked={mic.enabled} onCheckedChange={(v) => update("micLed", { enabled: v })} aria-label={t("dualsense.lights.mic")} />
-        </Card.Header>
-        <Card.Content class="grid gap-3">
-          {#if mic.enabled}
-            <OverrideNote checked={mic.override} onchange={(v) => update("micLed", { override: v })} />
-            <SettingRow title={t("dualsense.lights.micOn")}>
-              <Switch checked={mic.on} onCheckedChange={(v) => update("micLed", { on: v })} />
-            </SettingRow>
+          <Separator />
+          <!-- "auto" (never set: Periph leaves the LED alone) reads as off, the pad's own state -->
+          <SettingRow title={t("dualsense.lights.mic")}>
+            <ToggleGroup.Root type="single" variant="outline" value={mic.mode === "auto" ? "off" : mic.mode} onValueChange={(v) => v && update("micLed", { mode: v })}>
+              {#each ["off", "on", "blink"] as m}
+                <ToggleGroup.Item value={m} class="px-3 text-xs">{t(`dualsense.lights.micModes.${m}`)}</ToggleGroup.Item>
+              {/each}
+            </ToggleGroup.Root>
+          </SettingRow>
+          {#if mic.mode === "blink"}
+            <div class="grid gap-2">
+              <div class="flex justify-between text-sm">
+                <span>{t("dualsense.lights.micInterval")}</span>
+                <span class="text-muted-foreground font-mono text-xs">{t("dualsense.lights.ms", { ms: drafts.micInterval ?? mic.intervalMs })}</span>
+              </div>
+              <Slider type="single" min={100} max={2000} step={50} value={drafts.micInterval ?? mic.intervalMs}
+                onValueChange={(v) => (drafts.micInterval = v)} onValueCommit={(v) => { delete drafts.micInterval; update("micLed", { intervalMs: v }); }} />
+            </div>
           {/if}
         </Card.Content>
       </Card.Root>

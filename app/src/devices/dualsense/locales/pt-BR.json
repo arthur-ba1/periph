@@ -1,5 +1,11 @@
 {
   "name": "DualSense",
+  "tray": {
+    "color": "Cor",
+    "effect": "Efeito",
+    "battery": "{name} · Bateria {battery}%",
+    "charging": "{name} · Carregando {battery}%"
+  },
   "tabs": {
     "emulation": "Emulação",
     "lights": "Luzes",
@@ -12,7 +18,12 @@
     "battery": "Bateria",
     "charging": "Carregando",
     "full": "Carregado",
-    "low": "Bateria fraca"
+    "low": "Bateria fraca",
+    "model": "Modelo do controle",
+    "models": {
+      "white": "Branco",
+      "midnight": "Midnight Black"
+    }
   },
   "badges": {
     "emulating": "Controle virtual ligado",
@@ -27,10 +38,13 @@
   },
   "emulation": {
     "title": "Emulação",
-    "virtualTitle": "DualSense virtual",
+    "target": "Controle a emular",
+    "models": { "dualsense": "DualSense", "dualshock4": "DualShock 4", "xbox360": "Xbox 360" },
+    "previewOnly": "A emulação de {model} ainda está indisponível. Este modelo é uma prévia visual.",
+    "virtualTitle": "Controle virtual",
+    "activeModel": "{model} ativo",
     "active": "Ligado",
     "inactive": "Desligado",
-    "forward": "Repassar efeitos ao controle",
     "hide": "Esconder o controle físico",
     "hidHideMissing": "O HidHide não está instalado, então os jogos veem os dois controles durante a emulação. Instale o HidHide (github.com/nefarius/HidHide) para esconder o físico.",
     "statBattery": "Bateria",
@@ -40,16 +54,17 @@
       "missing": "Não instalado",
       "off": "Visível",
       "hiding": "Escondido"
+    },
+    "feedback": {
+      "title": "Efeitos no controle",
+      "desc": "Durante a emulação, escolha quem controla cada parte: o Periph ou o jogo.",
+      "lights": "Luzes",
+      "haptics": "Vibração",
+      "triggers": "Gatilhos",
+      "periph": "Periph",
+      "game": "Jogo",
+      "off": "Desligada"
     }
-  },
-  "override": {
-    "title": "Sobrepor o jogo",
-    "help": "O que isso faz?",
-    "desc": "Durante a emulação, os jogos podem definir as próprias luzes e efeitos de gatilho.",
-    "offLabel": "Desligado",
-    "off": "o jogo tem prioridade; seu ajuste só vale quando o jogo não define nada.",
-    "onLabel": "Ligado",
-    "on": "seu ajuste sempre vale."
   },
   "lights": {
     "title": "Luzes",
@@ -75,9 +90,12 @@
       "low": "Baixo"
     },
     "mic": "LED do microfone",
-    "micOn": "Aceso",
+    "micModes": { "off": "Apagado", "on": "Aceso", "blink": "Piscando" },
+    "micInterval": "Intervalo",
+    "ms": "{ms} ms",
     "playerShort": "LEDs",
-    "micShort": "Microfone",
+    "leds": "LEDs do controle",
+    "noLeds": "Nenhum",
     "pickerField": "Saturação e brilho",
     "pickerHue": "Matiz"
   },
@@ -151,6 +169,14 @@
       "r2": "Gatilho R2"
     },
     "noModel": "Adicione o modelo 3D para ver o controle aqui (veja assets/NOTICE.md).",
-    "credit": "Modelo 3D: “Playstation 5 Dualsense” de AHarmlessPotato (CC BY 4.0)"
+    "credit": "Modelo 3D: “Playstation 5 Dualsense” de AHarmlessPotato (CC BY 4.0)",
+    "modelCredits": {
+      "dualshock4": "Modelo 3D: “DualShock 4 PlayStation Controller” de shaielwolf (CC BY 4.0)",
+      "xbox360": "Modelo 3D: “XBox 360 controller” de Carlos Nava (CC BY-SA 4.0)"
+    }
+  },
+  "sourceNote": {
+    "lights": "Durante a emulação, o jogo controla as luzes; este ajuste só vale para o que o jogo não definir. Mude isso em Emulação.",
+    "triggers": "Durante a emulação, o jogo controla os gatilhos; este ajuste só vale para o que o jogo não definir. Mude isso em Emulação."
   }
 }

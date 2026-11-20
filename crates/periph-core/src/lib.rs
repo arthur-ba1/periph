@@ -89,7 +89,8 @@ pub trait Driver: Send + Sync + 'static {
         Duration::from_secs(2)
     }
 
-    /// Optional system tray integration: battery, tooltip line and quick menu items.
+    /// Optional system tray integration: battery, tooltip line and the controls of the quick
+    /// settings flyout (left click on the device's tray icon).
     fn tray(&self, _snap: &Snapshot) -> Option<Tray> {
         None
     }
@@ -175,19 +176,32 @@ pub enum Event {
 /// Tray contribution of one device.
 #[derive(Debug, Clone, Default)]
 pub struct Tray {
-    /// First line of the device's menu section and of the tooltip, e.g. "VT2 Max · bateria 80%".
+    /// Tooltip of the device's tray icon, e.g. "VT2 Max · bateria 80%".
     pub header: String,
-    /// Battery to draw in the tray icon: (percent, charging). The first device that reports one wins.
+    /// Battery indicator for this device's tray icon and flyout: (percent, charging).
     pub battery: Option<(u8, bool)>,
+    /// Quick settings in the flyout: a `Check` is a switch, a `Submenu` of `Check`s a choice
+    /// group (keep its option labels short), `Colors` a row of swatches, an `Action` a button.
     pub items: Vec<TrayItem>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+/// Serialized for the tray flyout as `{"type":"check","id":...,"label":...,"checked":true}` etc.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
 pub enum TrayItem {
     Action { id: String, label: String },
     Check { id: String, label: String, checked: bool },
     Submenu { label: String, items: Vec<TrayItem> },
+    /// Colour swatches (e.g. lightbar presets); clicking one sends its `id`.
+    Colors { label: String, options: Vec<TrayColor> },
     Separator,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct TrayColor {
+    pub id: String,
+    pub rgb: [u8; 3],
+    pub checked: bool,
 }
 
 fn disconnected(e: &anyhow::Error) -> Event {

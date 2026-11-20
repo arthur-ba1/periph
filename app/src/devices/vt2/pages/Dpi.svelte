@@ -8,6 +8,7 @@
   import PageHeader from "$lib/components/page-header.svelte";
   import AnimatedNumber from "$lib/components/animated-number.svelte";
   import { vt2, send } from "../store.svelte.js";
+  import { t } from "$lib/i18n.svelte.js";
 
   const MIN = 50, MAX = 26000;
   const toPos = (d) => (Math.log(d / MIN) / Math.log(MAX / MIN)) * 1000;
@@ -52,22 +53,22 @@
 </script>
 
 {#if cfg}
-  <PageHeader title="Sensibilidade" description="Defina os estágios de DPI que os botões DPI± do mouse alternam." />
+  <PageHeader title={t("vt2.dpi.title")} description={t("vt2.dpi.description")} />
 
   <div class="grid gap-4">
     <Card.Root>
       <Card.Header>
-        <Card.Description>DPI atual</Card.Description>
+        <Card.Description>{t("vt2.dpi.current")}</Card.Description>
         <Card.Title class="font-mono text-5xl font-semibold tracking-tighter">
           <AnimatedNumber value={live} />
         </Card.Title>
-        <Card.Action><Badge variant="outline" class="font-mono">Estágio {cfg.active + 1}/{cfg.stageCount}</Badge></Card.Action>
+        <Card.Action><Badge variant="outline" class="font-mono">{t("vt2.dpi.stageOf", { n: cfg.active + 1, total: cfg.stageCount })}</Badge></Card.Action>
       </Card.Header>
       <Card.Content>
         <ToggleGroup.Root type="single" variant="outline" class="w-full" value={String(cfg.active)} onValueChange={activate}>
           {#each stages as d, i}
-            <ToggleGroup.Item value={String(i)} class="h-14 flex-1 flex-col gap-0.5" aria-label="Estágio {i + 1}">
-              <span class="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">E{i + 1}</span>
+            <ToggleGroup.Item value={String(i)} class="h-14 flex-1 flex-col gap-0.5" aria-label={t("vt2.dpi.stage", { n: i + 1 })}>
+              <span class="text-muted-foreground text-[10px] font-medium uppercase tracking-wider">{t("vt2.dpi.stageShort", { n: i + 1 })}</span>
               <span class="font-mono text-sm font-semibold">{d}</span>
             </ToggleGroup.Item>
           {/each}
@@ -88,10 +89,10 @@
     {#if editing !== null}
       <Card.Root>
         <Card.Header>
-          <Card.Title>Estágio {editing + 1}</Card.Title>
-          <Card.Description>De 50 a 26.000 DPI, em passos de 10.</Card.Description>
+          <Card.Title>{t("vt2.dpi.stage", { n: editing + 1 })}</Card.Title>
+          <Card.Description>{t("vt2.dpi.range")}</Card.Description>
           <Card.Action>
-            <Button onclick={apply} disabled={!changed || vt2.busy}>{vt2.busy ? "Gravando…" : "Aplicar"}</Button>
+            <Button onclick={apply} disabled={!changed || vt2.busy}>{t(vt2.busy ? "common.saving" : "common.apply")}</Button>
           </Card.Action>
         </Card.Header>
         <Card.Content class="grid gap-5">
@@ -116,7 +117,7 @@
               <Button size="sm" variant={draft === p ? "secondary" : "outline"} class="font-mono" onclick={() => setDraft(p)}>{p}</Button>
             {/each}
             {#if changed}
-              <span class="text-muted-foreground ml-auto text-xs">Atual: <span class="font-mono">{cfg.dpi[editing]}</span></span>
+              <span class="text-muted-foreground ml-auto text-xs">{t("vt2.dpi.now")} <span class="font-mono">{cfg.dpi[editing]}</span></span>
             {/if}
           </div>
         </Card.Content>

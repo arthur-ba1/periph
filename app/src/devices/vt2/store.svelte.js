@@ -1,5 +1,6 @@
 // VT2 Max state: a view over the generic device registry plus mouse-only UI state.
 import { deviceState, send as sendTo } from "$lib/device-state.svelte.js";
+import { t } from "$lib/i18n.svelte.js";
 
 /** { connected, product, serial, reason, config, status, busy } fed by the "vt2" Rust driver. */
 export const vt2 = deviceState("vt2");
@@ -23,18 +24,19 @@ export function setColor(c) {
 
 export const POLLING = [125, 250, 500, 1000, 2000, 4000, 8000];
 
+/** Button table in device order (index = button slot). `name` follows the UI language. */
 export const BUTTONS = [
-  { id: "left", name: "Botão esquerdo" },
-  { id: "middle", name: "Clique da roda" },
-  { id: "right", name: "Botão direito" },
-  { id: "dpiUp", name: "DPI +" },
-  { id: "dpiDown", name: "DPI −" },
-  { id: "forward", name: "Lateral frente" },
-  { id: "back", name: "Lateral trás" },
-  { id: "wheelUp", name: "Roda para cima", locked: true },
-  { id: "wheelDown", name: "Roda para baixo", locked: true },
-  { id: "diy", name: "Botão DIY", hint: "embaixo" },
-];
+  { id: "left" },
+  { id: "middle" },
+  { id: "right" },
+  { id: "dpiUp" },
+  { id: "dpiDown" },
+  { id: "forward" },
+  { id: "back" },
+  { id: "wheelUp", locked: true },
+  { id: "wheelDown", locked: true },
+  { id: "diy" },
+].map((b) => ({ ...b, get name() { return t(`vt2.buttons.names.${b.id}`); } }));
 
 // ---- browser demo (?demo) ----
 export const demo = {

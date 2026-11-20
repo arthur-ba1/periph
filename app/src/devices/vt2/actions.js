@@ -1,16 +1,17 @@
 // ButtonAction (serde external tagging) helpers. `icon` = VT2 Icons name.
 import { usageName } from "$lib/hid.js";
+import { t } from "$lib/i18n.svelte.js";
 
 export const ACTIONS = [
-  { key: "left", label: "Clique esquerdo", value: { Mouse: 1 }, icon: "clickLeft" },
-  { key: "right", label: "Clique direito", value: { Mouse: 2 }, icon: "clickRight" },
-  { key: "middle", label: "Clique do meio", value: { Mouse: 4 }, icon: "clickMiddle" },
-  { key: "back", label: "Voltar", value: { Mouse: 8 }, icon: "back" },
-  { key: "forward", label: "Avançar", value: { Mouse: 16 }, icon: "forward" },
-  { key: "dpiUp", label: "DPI +", value: "DpiUp", icon: "dpiUp" },
-  { key: "dpiDown", label: "DPI −", value: "DpiDown", icon: "dpiDown" },
-  { key: "off", label: "Desativado", value: "Disabled", icon: "disabled" },
-];
+  { key: "left", value: { Mouse: 1 }, icon: "clickLeft" },
+  { key: "right", value: { Mouse: 2 }, icon: "clickRight" },
+  { key: "middle", value: { Mouse: 4 }, icon: "clickMiddle" },
+  { key: "back", value: { Mouse: 8 }, icon: "back" },
+  { key: "forward", value: { Mouse: 16 }, icon: "forward" },
+  { key: "dpiUp", value: "DpiUp", icon: "dpiUp" },
+  { key: "dpiDown", value: "DpiDown", icon: "dpiDown" },
+  { key: "off", value: "Disabled", icon: "disabled" },
+].map((a) => ({ ...a, get label() { return t(`vt2.buttons.actions.${a.key}`); } }));
 
 export function actionKey(a) {
   if (a === "DpiUp") return "dpiUp";
@@ -25,8 +26,8 @@ export function actionKey(a) {
 
 export function actionLabel(a) {
   const k = actionKey(a);
-  if (k === "key") return `Tecla ${usageName(a.Key)}`;
-  if (k === "other") return "Rolagem (padrão)";
+  if (k === "key") return t("vt2.buttons.actions.key", { key: usageName(a.Key) });
+  if (k === "other") return t("vt2.buttons.actions.other");
   return ACTIONS.find((x) => x.key === k).label;
 }
 

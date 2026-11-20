@@ -215,6 +215,10 @@ pub struct Sections {
     pub mic_led: Option<u8>,
     pub right_trigger: Option<TriggerBlock>,
     pub left_trigger: Option<TriggerBlock>,
+    /// Lightbar setup "light out": releases the lightbar from the controller's boot animation.
+    /// Send it once per connection, on its own (as Linux hid-playstation does at init); repeated
+    /// with every colour it restarts a fade-out and the colour never settles.
+    pub release_lightbar: bool,
 }
 
 impl Sections {
@@ -225,7 +229,7 @@ impl Sections {
     /// Writes every present section and sets its valid flags; other bytes are left alone.
     /// Flags as in Linux hid-playstation and DSX: byte 1 bit 2/3 = right/left trigger; byte 2
     /// bit 0 mic LED, bit 2 lightbar, bit 4 player LEDs; byte 39 bit 0 LED brightness control,
-    /// bit 1 lightbar setup control with byte 42 = 0x02 (release the boot light animation).
+    /// bit 1 lightbar setup control with byte 42 = 0x02 (only with `release_lightbar`).
     pub fn apply(&self, report: &mut OutputReport) {
         let r = &mut report.raw;
         if let Some(block) = self.right_trigger {
@@ -242,11 +246,13 @@ impl Sections {
         }
         if let Some([red, green, blue]) = self.lightbar {
             r[2] |= 0x04;
-            r[39] |= 0x02;
-            r[42] = 0x02;
             r[45] = red;
             r[46] = green;
             r[47] = blue;
+        }
+        if self.release_lightbar {
+            r[39] |= 0x02;
+            r[42] = 0x02;
         }
         if let Some((mask, brightness)) = self.player_leds {
             r[2] |= 0x10;
@@ -391,8 +397,7 @@ mod tests {
         assert_eq!(r.raw[0], 0x02);
         assert_eq!(r.raw[1], 0x04, "right trigger only, no rumble bits");
         assert_eq!(r.raw[2], 0x04, "lightbar only");
-        assert_eq!(r.raw[39], 0x02);
-        assert_eq!(r.raw[42], 0x02);
+        assert_eq!((r.raw[39], r.raw[42]), (0, 0), "no lightbar setup with a colour");
         assert_eq!(r.lightbar_rgb(), (0x9d, 0, 0));
         assert_eq!(&r.right_trigger()[..4], &[0x25, 0x44, 0x00, 0x07]);
         assert_eq!(r.left_trigger()[0], 0, "left block untouched");
@@ -415,6 +420,12 @@ mod tests {
         assert_eq!(game.raw[3], 200);
         assert_eq!(game.lightbar_rgb(), (7, 0, 0));
         assert_eq!(game.right_trigger()[0], 0x05);
+    }
+
+    #[test]
+    fn lightbar_release_is_its_own_flag() {
+        let r = Sections { release_lightbar: true, ..Default::default() }.report();
+        assert_eq!((r.raw[2], r.raw[39], r.raw[42]), (0, 0x02, 0x02));
     }
 
     #[test]

@@ -2,11 +2,25 @@
   // Shared DualSense page frame: compact header, the 3D stage on the left and the settings on
   // the right, both sized to the window so a page fits without scrolling (the settings column
   // scrolls on its own only if a section is taller than the window).
-  import ControllerStage from "./controller-stage.svelte";
+  // The 3D stage itself is not here: it is one persistent layer (stage-layer.svelte) laid over
+  // this placeholder, so switching tabs moves the same controller instead of rebuilding it.
+  import { onMount } from "svelte";
+  import { ui, focusPart } from "./store.svelte.js";
 
-  /** title, description: header; home: stage focus on open; virtual: emulated twin;
+  /** title, description: header; home: stage focus on open; virtual: emulated twin; preview: display-only target;
    *  tabs: snippet above the settings (section tabs); children: the settings. */
-  let { title, description, home = "overview", virtual = false, tabs = null, children } = $props();
+  let { title, description, home = "overview", virtual = false, preview = null, tabs = null, children } = $props();
+
+  let slot = $state(null);
+  $effect(() => {
+    ui.slot = slot;
+    return () => ui.slot === slot && (ui.slot = null);
+  });
+  $effect(() => {
+    ui.virtual = virtual;
+    ui.preview = preview;
+  });
+  onMount(() => focusPart(home));
 </script>
 
 <div class="flex h-[max(24rem,calc(100vh-44px-4rem))] flex-col gap-4">
@@ -16,7 +30,7 @@
   </div>
   <div class="grid min-h-0 flex-1 grid-cols-[minmax(0,4fr)_minmax(0,6fr)] gap-4">
     <div class="min-h-0">
-      <ControllerStage {home} {virtual} />
+      <div bind:this={slot} class="size-full"></div>
     </div>
     <div class="flex min-h-0 flex-col gap-3">
       {#if tabs}<div class="shrink-0">{@render tabs()}</div>{/if}

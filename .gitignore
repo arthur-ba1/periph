@@ -3,6 +3,7 @@
 /app/dist
 /app/node_modules
 /crates/periph-app/gen
+/.qmk-build/
 
 # local ML tooling (Hunyuan3D, venv, model weights, generated meshes)
 /ml

@@ -1,5 +1,11 @@
 {
   "name": "DualSense",
+  "tray": {
+    "color": "Color",
+    "effect": "Effect",
+    "battery": "{name} · {battery}% battery",
+    "charging": "{name} · {battery}% charging"
+  },
   "tabs": {
     "emulation": "Emulation",
     "lights": "Lights",
@@ -12,7 +18,12 @@
     "battery": "Battery",
     "charging": "Charging",
     "full": "Charged",
-    "low": "Low battery"
+    "low": "Low battery",
+    "model": "Controller model",
+    "models": {
+      "white": "White",
+      "midnight": "Midnight Black"
+    }
   },
   "badges": {
     "emulating": "Virtual controller on",
@@ -27,10 +38,13 @@
   },
   "emulation": {
     "title": "Emulation",
-    "virtualTitle": "Virtual DualSense",
+    "target": "Controller to emulate",
+    "models": { "dualsense": "DualSense", "dualshock4": "DualShock 4", "xbox360": "Xbox 360" },
+    "previewOnly": "{model} emulation is not available yet. This model is a visual preview.",
+    "virtualTitle": "Virtual controller",
+    "activeModel": "{model} active",
     "active": "On",
     "inactive": "Off",
-    "forward": "Send feedback to the controller",
     "hide": "Hide the physical controller",
     "hidHideMissing": "HidHide is not installed, so games see both controllers while emulating. Install HidHide (github.com/nefarius/HidHide) to hide the physical one.",
     "statBattery": "Battery",
@@ -40,16 +54,17 @@
       "missing": "Not installed",
       "off": "Visible",
       "hiding": "Hidden"
+    },
+    "feedback": {
+      "title": "Effects on the controller",
+      "desc": "While emulating, choose who controls each part: Periph or the game.",
+      "lights": "Lights",
+      "haptics": "Vibration",
+      "triggers": "Triggers",
+      "periph": "Periph",
+      "game": "Game",
+      "off": "Off"
     }
-  },
-  "override": {
-    "title": "Override the game",
-    "help": "What does this do?",
-    "desc": "While emulating, games can set their own lights and trigger effects.",
-    "offLabel": "Off",
-    "off": "the game wins; your setting applies only when the game sets nothing.",
-    "onLabel": "On",
-    "on": "your setting always wins."
   },
   "lights": {
     "title": "Lights",
@@ -75,9 +90,12 @@
       "low": "Low"
     },
     "mic": "Mic LED",
-    "micOn": "Lit",
+    "micModes": { "off": "Off", "on": "On", "blink": "Blinking" },
+    "micInterval": "Interval",
+    "ms": "{ms} ms",
     "playerShort": "LEDs",
-    "micShort": "Mic",
+    "leds": "Controller LEDs",
+    "noLeds": "None",
     "pickerField": "Saturation and brightness",
     "pickerHue": "Hue"
   },
@@ -151,6 +169,14 @@
       "r2": "R2 trigger"
     },
     "noModel": "Add the 3D model to see the controller here (see assets/NOTICE.md).",
-    "credit": "3D model: “Playstation 5 Dualsense” by AHarmlessPotato (CC BY 4.0)"
+    "credit": "3D model: “Playstation 5 Dualsense” by AHarmlessPotato (CC BY 4.0)",
+    "modelCredits": {
+      "dualshock4": "3D model: “DualShock 4 PlayStation Controller” by shaielwolf (CC BY 4.0)",
+      "xbox360": "3D model: “XBox 360 controller” by Carlos Nava (CC BY-SA 4.0)"
+    }
+  },
+  "sourceNote": {
+    "lights": "While emulating, the game controls the lights; this setting only applies to what the game leaves unset. Change it in Emulation.",
+    "triggers": "While emulating, the game controls the triggers; this setting only applies to what the game leaves unset. Change it in Emulation."
   }
 }

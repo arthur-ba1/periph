@@ -1,0 +1,128 @@
+{
+  "tabs": {
+    "dpi": "DPI",
+    "performance": "Performance",
+    "sensor": "Sensor",
+    "buttons": "Buttons"
+  },
+  "waiting": {
+    "asleepTitle": "The mouse is asleep",
+    "asleepText": "The dongle is connected but the mouse didn't answer. Move or click the mouse to wake it up; the app retries on its own.",
+    "reading": "Reading configuration…",
+    "searching": "Looking for the VT2 Max",
+    "text": "Connect the dongle or the cable. If A HUB is open, close it, since both can't use the mouse at the same time."
+  },
+  "card": {
+    "wired": "Cable",
+    "wireless": "Wireless",
+    "asleep": "Asleep",
+    "searching": "Searching",
+    "battery": "Battery",
+    "charging": "Charging",
+    "serial": "S/N {serial}",
+    "low": "Low battery",
+    "color": "Mouse color"
+  },
+  "dpi": {
+    "title": "Sensitivity",
+    "description": "Set the DPI stages the mouse's DPI± buttons cycle through.",
+    "current": "Current DPI",
+    "stageOf": "Stage {n}/{total}",
+    "stage": "Stage {n}",
+    "stageShort": "S{n}",
+    "range": "From 50 to 26,000 DPI, in steps of 10.",
+    "now": "Current:"
+  },
+  "performance": {
+    "title": "Performance",
+    "description": "How many times per second the mouse reports its position to the PC.",
+    "polling": "Polling rate",
+    "pollingNote": "Rates above 1 kHz need the high-speed dongle.",
+    "interval": "Time between reports",
+    "battery": "Battery drain",
+    "drain": [
+      "Minimal",
+      "Very low",
+      "Low",
+      "Moderate",
+      "High",
+      "Very high",
+      "Maximum"
+    ],
+    "tipLabel": "Recommendation:",
+    "tip": "1–2 kHz for everyday use. 4–8 kHz cut latency by a few tenths of a millisecond but use much more battery and CPU."
+  },
+  "sensor": {
+    "title": "Sensor",
+    "description": "Tracking and button response settings.",
+    "motionSync": "Motion Sync",
+    "motionSyncDesc": "Syncs sensor reads with polling. Smoother movement, about 1 ms more delay.",
+    "linear": "Linear correction",
+    "linearDesc": "Angle snapping: straightens strokes that should be straight.",
+    "ripple": "Ripple control",
+    "rippleDesc": "Smooths sensor noise at high DPI.",
+    "glass": "Glass mode",
+    "glassDesc": "Improves tracking on glass surfaces. Turn it off on regular mouse pads.",
+    "lod": "Lift-off distance",
+    "debounce": "Press debounce",
+    "debounceDesc": "How long the mouse waits to confirm a click. Low values respond faster; high values prevent accidental double clicks.",
+    "onRelease": "On release: {ms} ms"
+  },
+  "buttons": {
+    "title": "Buttons",
+    "description": "Pick a button on the mouse or in the menu and choose what it does.",
+    "viewTop": "Top view",
+    "viewBottom": "Bottom view",
+    "bottomHint": "Underside · DIY button",
+    "button": "Button",
+    "locked": "Scrolling uses a function code that hasn't been decoded yet. For safety, it can't be changed here.",
+    "keyboardKey": "Keyboard key",
+    "key": "Key",
+    "extraKeys": "Extra keys F13–F24, which no keyboard has and are great for shortcuts",
+    "leftWarning": "Changing the left click can make the mouse hard to use.",
+    "swap": "Change",
+    "names": {
+      "left": "Left button",
+      "middle": "Wheel click",
+      "right": "Right button",
+      "dpiUp": "DPI +",
+      "dpiDown": "DPI −",
+      "forward": "Side forward",
+      "back": "Side back",
+      "wheelUp": "Wheel up",
+      "wheelDown": "Wheel down",
+      "diy": "DIY button"
+    },
+    "actions": {
+      "left": "Left click",
+      "right": "Right click",
+      "middle": "Middle click",
+      "back": "Back",
+      "forward": "Forward",
+      "dpiUp": "DPI +",
+      "dpiDown": "DPI −",
+      "off": "Disabled",
+      "key": "Key {key}",
+      "other": "Scroll (default)"
+    },
+    "colorVariant": "Mouse color"
+  },
+  "tray": {
+    "header": "VT2 Max  ·  {link}  ·  battery {battery}%{charging}  ·  {dpi} DPI",
+    "wired": "cable",
+    "wireless": "wireless",
+    "charging": " (charging)",
+    "connected": "VT2 Max  ·  connected",
+    "disconnected": "VT2 Max  ·  disconnected",
+    "dpi": "DPI",
+    "polling": "Polling rate",
+    "motionSync": "Motion Sync",
+    "glass": "Glass mode",
+    "refresh": "Re-read configuration"
+  },
+  "errors": {
+    "unsupportedAction": "unsupported action",
+    "keyOutOfRange": "key out of range"
+  },
+  "model3dUnavailable": "3D model unavailable"
+}

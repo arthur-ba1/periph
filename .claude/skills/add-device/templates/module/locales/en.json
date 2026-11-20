@@ -1,0 +1,15 @@
+{
+  "name": "Brand Model",
+  "tabs": { "performance": "Performance" },
+  "waiting": {
+    "reading": "Reading configuration…",
+    "searching": "Looking for the Brand Model",
+    "text": "Connect the device. If the official software is open, close it, since both can't use the device at the same time."
+  },
+  "performance": {
+    "title": "Performance",
+    "description": "How often the device reports to the PC.",
+    "polling": "Polling rate",
+    "pollingDesc": "How many times per second the device reports its position."
+  }
+}

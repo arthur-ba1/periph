@@ -11,6 +11,7 @@
   import { toast } from "svelte-sonner";
   import { kbd, sendKbd } from "../store.svelte.js";
   import { describe, categories, keycodeFromEvent } from "../keycodes.js";
+  import { t } from "$lib/i18n.svelte.js";
 
   let def = $derived(kbd.definition);
   let layer = $state(0);
@@ -54,7 +55,7 @@
     e.preventDefault();
     recording = false;
     const code = keycodeFromEvent(e);
-    if (code === undefined) return toast.error(`Tecla não suportada: ${e.code}`);
+    if (code === undefined) return toast.error(t("common.unsupportedKey", { key: e.code }));
     assign(code);
   }
 </script>
@@ -62,18 +63,18 @@
 <svelte:window onkeydown={onKey} />
 
 {#if def}
-  <PageHeader title="Keymap" description="Escolha a camada, clique numa tecla e defina o que ela faz. Grava direto no teclado." />
+  <PageHeader title={t("via.keymap.title")} description={t("via.keymap.description")} />
 
   <div class="grid gap-4">
     <Card.Root>
       <Card.Header>
         <Card.Title>{def.displayName ?? def.name}</Card.Title>
-        <Card.Description>{kbd.layers} camadas · a camada 0 é a base; as outras são acessadas por teclas de camada (como o Fn).</Card.Description>
+        <Card.Description>{t("via.keymap.layersInfo", { n: kbd.layers })}</Card.Description>
       </Card.Header>
       <Card.Content class="grid gap-5">
         <ToggleGroup.Root type="single" variant="outline" value={String(layer)} onValueChange={(v) => v && (layer = +v)} class="w-full">
           {#each Array(kbd.layers) as _, i}
-            <ToggleGroup.Item value={String(i)} class="flex-1 font-mono text-xs">Camada {i}</ToggleGroup.Item>
+            <ToggleGroup.Item value={String(i)} class="flex-1 font-mono text-xs">{t("via.keymap.layer", { n: i })}</ToggleGroup.Item>
           {/each}
         </ToggleGroup.Root>
         <div class="pb-1" bind:clientWidth={boxW}>
@@ -87,7 +88,7 @@
     {#if selInfo}
       <Card.Root>
         <Card.Header>
-          <Card.Description>Camada {layer} · tecla {selKey}</Card.Description>
+          <Card.Description>{t("via.keymap.selected", { layer, key: selKey })}</Card.Description>
           <Card.Title class="flex items-center gap-2 text-xl">
             {describe(current, def).long}
           </Card.Title>
@@ -96,18 +97,18 @@
         <Card.Content class="grid gap-4">
           {#if isEncoder}
             <ToggleGroup.Root type="single" variant="outline" value={target} onValueChange={(v) => v && (target = v)}>
-              <ToggleGroup.Item value="key" class="px-4">Pressionar o knob</ToggleGroup.Item>
-              <ToggleGroup.Item value="ccw" class="px-4">Girar ↺ ({describe(kbd.encoders[layer]?.[selInfo.encoder]?.[0] ?? 0, def).short})</ToggleGroup.Item>
-              <ToggleGroup.Item value="cw" class="px-4">Girar ↻ ({describe(kbd.encoders[layer]?.[selInfo.encoder]?.[1] ?? 0, def).short})</ToggleGroup.Item>
+              <ToggleGroup.Item value="key" class="px-4">{t("via.keymap.knobPress")}</ToggleGroup.Item>
+              <ToggleGroup.Item value="ccw" class="px-4">{t("via.keymap.knobCcw", { key: describe(kbd.encoders[layer]?.[selInfo.encoder]?.[0] ?? 0, def).short })}</ToggleGroup.Item>
+              <ToggleGroup.Item value="cw" class="px-4">{t("via.keymap.knobCw", { key: describe(kbd.encoders[layer]?.[selInfo.encoder]?.[1] ?? 0, def).short })}</ToggleGroup.Item>
             </ToggleGroup.Root>
           {/if}
 
           <div class="flex items-center gap-2">
             <Button variant={recording ? "default" : "outline"} class={recording ? "ring-brand ring-2" : ""} onclick={() => (recording = !recording)}>
-              <Icon name="keyboard" />{recording ? "Pressione uma tecla…" : "Gravar pela tecla"}
+              <Icon name="keyboard" />{recording ? t("common.pressKey") : t("via.keymap.record")}
             </Button>
-            <Button variant="ghost" onclick={() => assign(0x01)}>Transparente</Button>
-            <Button variant="ghost" onclick={() => assign(0x00)}>Nenhuma</Button>
+            <Button variant="ghost" onclick={() => assign(0x01)}>{t("via.keymap.transparent")}</Button>
+            <Button variant="ghost" onclick={() => assign(0x00)}>{t("via.keymap.none")}</Button>
           </div>
 
           <Tabs.Root bind:value={cat}>
@@ -139,7 +140,8 @@
         </Card.Content>
       </Card.Root>
     {:else}
-      <p class="text-muted-foreground text-center text-sm">Clique numa tecla para editar. Dica: <Kbd>▽</Kbd> é transparente, então a tecla usa o que estiver na camada de baixo.</p>
+      {@const [before, after] = t("via.keymap.hint").split("{symbol}")}
+      <p class="text-muted-foreground text-center text-sm">{before}<Kbd>▽</Kbd>{after}</p>
     {/if}
   </div>
 {/if}

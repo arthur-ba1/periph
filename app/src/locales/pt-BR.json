@@ -41,7 +41,13 @@
   "tray": {
     "open": "Abrir Periph",
     "autostart": "Iniciar com o Windows",
-    "quit": "Sair"
+    "quit": "Sair",
+    "battery": "Bateria",
+    "charging": "Carregando",
+    "noDevices": "Nenhum dispositivo conectado",
+    "searching": "Procurando",
+    "connected": "Conectado",
+    "openDevice": "Abrir no Periph"
   },
   "errors": {
     "invalidCommand": "comando inválido"

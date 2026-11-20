@@ -17,6 +17,9 @@ export const ICONS = {
   trigger: `<path d="M7.25 20.25V10.5c0-3.3 2.15-5.75 4.75-5.75s4.75 2.45 4.75 5.75v9.75"/><path d="M7.25 12.5h9.5"/><path d="M10 16.25h4"/>`,
   // controller: rounded body with two grips, d-pad cross and two face buttons
   gamepad: `<path d="M7.6 6.75h8.8c2.05 0 3.55 1.35 3.95 3.4l1 5.55c.4 2.15-1.95 3.55-3.45 2.05l-2.15-2.1h-7.5l-2.15 2.1c-1.5 1.5-3.85.1-3.45-2.05l1-5.55c.4-2.05 1.9-3.4 3.95-3.4Z"/><path d="M8 9.75v3.5M6.25 11.5h3.5"/><circle cx="15.4" cy="10.6" r=".95" fill="currentColor" stroke="none"/><circle cx="17.4" cy="12.6" r=".95" fill="currentColor" stroke="none"/>`,
+  dualsense: `<path d="M8 5.5h8c2.3 0 3.7 1.5 4.1 3.7l1.1 7.4c.3 2.1-1.5 3.2-3 1.8l-3.1-2.9H8.9l-3.1 2.9c-1.5 1.4-3.3.3-3-1.8l1.1-7.4c.4-2.2 1.8-3.7 4.1-3.7Z"/><path d="M9 5.5l1 4h4l1-4M6.8 8.7v2.8M5.4 10.1h2.8M17 9h.01m1.3 1.5h.01"/><circle cx="9.6" cy="12.8" r=".8"/><circle cx="14.4" cy="12.8" r=".8"/>`,
+  dualshock4: `<path d="M7.2 6h9.6c2 0 3.3 1.2 3.6 3.3l.9 7.2c.3 2.6-2.1 3.3-3.3 1.5l-1.7-2.3H7.7L6 18c-1.2 1.8-3.6 1.1-3.3-1.5l.9-7.2C3.9 7.2 5.2 6 7.2 6Z"/><path d="M9 6h6v4H9zM6.4 8.8v2.8M5 10.2h2.8M17.2 9h.01m1.5 1.4h.01"/><circle cx="9.5" cy="13" r="1"/><circle cx="14.5" cy="13" r="1"/>`,
+  xbox360: `<path d="M7 5.8c2.1 0 2.9.8 5 .8s2.9-.8 5-.8c2.1 0 3.4 1.6 3.7 3.7l.8 6.9c.3 2.8-2.1 3.6-3.8 1.8l-2.6-2.7H8.9l-2.6 2.7c-1.7 1.8-4.1 1-3.8-1.8l.8-6.9C3.6 7.4 4.9 5.8 7 5.8Z"/><circle cx="6.8" cy="9.6" r="1"/><path d="M9 11.6v2.8m-1.4-1.4h2.8m6.6-4h.01m1.5 1.5h.01M11 8.8l2 2m0-2-2 2"/><circle cx="14.5" cy="13" r="1"/>`,
 
   // controller parts (DualSense pages)
   // touchpad flanked by the two curved light strips
@@ -55,4 +58,9 @@ export const ICONS = {
   palette: `<circle cx="12" cy="12" r="8.25"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>`,
   // language picker: globe with meridian and parallels
   language: `<circle cx="12" cy="12" r="8.25"/><path d="M3.75 12h16.5M12 3.75c2.2 2.3 3.3 5 3.3 8.25s-1.1 5.95-3.3 8.25M12 3.75c-2.2 2.3-3.3 5-3.3 8.25s1.1 5.95 3.3 8.25"/>`,
+  // tray flyout
+  headset: `<path d="M4.75 14v-2a7.25 7.25 0 0 1 14.5 0v2"/><rect x="3.75" y="13" width="4.25" height="6.25" rx="1.75"/><rect x="16" y="13" width="4.25" height="6.25" rx="1.75"/>`,
+  chevron: `<path d="M7.25 9.75 12 14.5l4.75-4.75"/>`,
+  power: `<path d="M12 3.75v7"/><path d="M7.4 6.6a7.25 7.25 0 1 0 9.2 0"/>`,
+  external: `<path d="M13.75 4.75h5.5v5.5"/><path d="M19.25 4.75 11 13"/><path d="M17.25 13.75v3.5a2 2 0 0 1-2 2h-8.5a2 2 0 0 1-2-2v-8.5a2 2 0 0 1 2-2h3.5"/>`,
 };

@@ -38,7 +38,7 @@ pub trait Driver: Send + Sync + 'static {
     fn info(&self) -> DeviceInfo;                                     // { id, name, kind }
     fn open(&self) -> anyhow::Result<(Box<dyn Session>, Connected)>; // Err = absent; message shown in UI
     fn retry_interval(&self) -> Duration { 2s }
-    fn tray(&self, snap: &Snapshot) -> Option<Tray> { None }          // tray header, battery, quick items
+    fn tray(&self, snap: &Snapshot) -> Option<Tray> { None }          // tray tooltip, battery, flyout quick settings
     fn tray_command(&self, id: &str, snap: &Snapshot) -> Option<Value> { None }
 }
 
@@ -86,11 +86,11 @@ Conventions (copy `drivers/vt2.rs`, or the template in the skill):
 ```js
 export default {
   id: "mydevice",               // = Rust DeviceInfo.id
-  name: "Brand Model",
-  kind: "Mouse",                // label under the name in the device picker
+  get name() { return t("mydevice.name"); },
+  kind: "mouse",                // mouse | keyboard | headset | controller | other
   icon: "mouse",                // name from src/lib/icons/icons.js
   order: 3,                     // position in the picker
-  tabs: [{ label: "DPI", icon: "dpi", page: DpiPage }],
+  tabs: [{ key: "dpi", icon: "dpi", page: DpiPage, get label() { return t("mydevice.tabs.dpi"); } }],
   // optional:
   Card,                         // sidebar card component (default: icon + name + status)
   Badges,                       // title-bar badges component
@@ -113,7 +113,16 @@ send("mydevice", { type: "polling", value: 1000 });
 Put these in a small `store.svelte.js` in the module (see `devices/vt2/store.svelte.js`) and
 import it from the pages. Pages are plain Svelte 5 components; reuse the shadcn-svelte
 components in `$lib/components/ui/` and `$lib/components/{page-header,setting-row}.svelte` so
-the device looks like the rest of the app. UI copy is in Portuguese (pt-BR).
+the device looks like the rest of the app.
+
+### Text and translations
+
+Every user-visible string goes through `t()` (`$lib/i18n.svelte.js`), with keys in
+`app/src/devices/<id>/locales/en.json` and one file per other language (`pt-BR.json`, ...),
+read as `t("<id>.<key>")`. Driver text shown to the user (tray flyout, errors) uses the same keys
+from Rust: `periph_core::t("<id>.tray.refresh")`. When the device is absent for a known reason,
+return `periph_core::Absent::new("asleep", e)` from `open()` and branch on `dev.code` in the
+module's `waiting()`. Details: [translating.md](translating.md).
 
 Folders starting with `_` are ignored by the registry.
 
@@ -137,6 +146,7 @@ the module.
 
 - [ ] `cargo test --workspace` passes, including protocol tests built from captured bytes
 - [ ] `npm --prefix app run build` passes
+- [ ] `npm --prefix app run check:i18n` passes (all text in every language)
 - [ ] `?demo` shows every tab working, and the app works with the assets folder empty
 - [ ] tested on the real device: connect, every setting round-trips (change, refresh, still
       there), unplug/replug, sleep/wake

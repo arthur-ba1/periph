@@ -1,0 +1,87 @@
+{
+  "name": "Teclado VIA",
+  "tabs": { "keymap": "Keymap", "lighting": "Iluminação" },
+  "waiting": {
+    "noDefinitionTitle": "Teclado VIA sem definição",
+    "noDefinitionText": "Encontrei {product} (VID {vid}, PID {pid}), mas não há um arquivo de definição VIA para ele em app/src/devices/via/keyboards/.",
+    "aKeyboard": "um teclado",
+    "reading": "Lendo o teclado…",
+    "searching": "Procurando teclado VIA",
+    "text": "Conecte o teclado pelo cabo USB. Se o site do VIA (usevia.app) estiver aberto, feche a aba, porque os dois não podem usar o teclado ao mesmo tempo."
+  },
+  "card": { "online": "Online", "searching": "Procurando", "layers": "VIA v{protocol} · {layers} camadas" },
+  "badges": { "layers": "{n} camadas" },
+  "keymap": {
+    "title": "Keymap",
+    "description": "Escolha a camada, clique numa tecla e defina o que ela faz. Grava direto no teclado.",
+    "layersInfo": "{n} camadas · a camada 0 é a base; as outras são acessadas por teclas de camada (como o Fn).",
+    "layer": "Camada {n}",
+    "selected": "Camada {layer} · tecla {key}",
+    "knobPress": "Pressionar o knob",
+    "knobCcw": "Girar ↺ ({key})",
+    "knobCw": "Girar ↻ ({key})",
+    "record": "Gravar pela tecla",
+    "transparent": "Transparente",
+    "none": "Nenhuma",
+    "hint": "Clique numa tecla para editar. Dica: {symbol} é transparente, então a tecla usa o que estiver na camada de baixo.",
+    "knobTitle": "Pressionar: {press} · ↺ {ccw} · ↻ {cw}"
+  },
+  "lighting": {
+    "title": "Iluminação",
+    "description": "Os ajustes de brilho, efeito, velocidade e cor são salvos no teclado.",
+    "duel": {
+      "title": "Duelo de cores",
+      "description": "Pressione ou clique nas teclas para fazer a cor de cada lado avançar na prévia.",
+      "left": "Cor da esquerda",
+      "right": "Cor da direita",
+      "wheel": "Roda de cores",
+      "wheelHelp": "Use as setas esquerda e direita para ajustar a matiz e as setas cima e baixo para ajustar a saturação."
+    },
+    "word": {
+      "title": "Palavra",
+      "description": "A prévia acende uma tecla por vez e repete a sequência.",
+      "missing": "Sem tecla correspondente no mapa da camada base para {keys}."
+    },
+    "hue": "Matiz",
+    "saturation": "Saturação",
+    "labels": { "Backlight": "Retroiluminação", "Brightness": "Brilho", "Effect": "Efeito", "Effect Speed": "Velocidade do efeito", "Color": "Cor" },
+    "effects": {
+      "All Off": "Desligado", "SOLID_COLOR": "Cor sólida", "BREATHING": "Respiração", "CYCLE_ALL": "Ciclo de cores",
+      "CYCLE_LEFT_RIGHT": "Ciclo esquerda → direita", "CYCLE_UP_DOWN": "Ciclo cima → baixo", "RAINBOW_MOVING_CHEVRON": "Arco-íris em V",
+      "CYCLE_OUT_IN": "Ciclo de fora para dentro", "CYCLE_OUT_IN_DUAL": "Ciclo duplo de fora para dentro", "CYCLE_PINWHEEL": "Cata-vento",
+      "CYCKE_SPIRAL": "Espiral", "CYCLE_SPIRAL": "Espiral", "DUAL_BEACON": "Farol duplo", "RAINBOW_BEACON": "Farol arco-íris",
+      "RAINDROPS": "Gotas de chuva", "TYPING_HEATMAP": "Mapa de calor da digitação", "SOLID_REACTIVE_SIMPLE": "Reativo simples",
+      "SOLID_REACTIVE": "Reativo", "SOLID_REACTIVE_CROSS": "Reativo em cruz", "MATRIX_MULTISPLASH": "Respingos"
+    }
+  },
+  "keycodes": {
+    "none": "Nenhuma", "transparent": "Transparente (usa a camada de baixo)", "space": "Espaço", "spaceShort": "Espaço",
+    "right": "Seta direita", "left": "Seta esquerda", "down": "Seta baixo", "up": "Seta cima", "menu": "Menu de contexto",
+    "power": "Desligar", "sleep": "Suspender", "wake": "Acordar", "mute": "Mudo", "next": "Próxima faixa", "prev": "Faixa anterior",
+    "stop": "Parar", "select": "Selecionar mídia", "eject": "Ejetar", "mail": "E-mail", "calc": "Calculadora", "pc": "Meu computador",
+    "search": "Pesquisar", "home": "Página inicial", "webBack": "Navegador: voltar", "webFwd": "Navegador: avançar",
+    "webStop": "Navegador: parar", "webReload": "Navegador: recarregar", "favorites": "Favoritos", "ff": "Avançar mídia",
+    "rew": "Retroceder mídia", "briUp": "Brilho da tela +", "briDown": "Brilho da tela −", "controlPanel": "Painel de controle",
+    "assistant": "Assistente",
+    "msUp": "Mouse: cima", "msDown": "Mouse: baixo", "msLeft": "Mouse: esquerda", "msRight": "Mouse: direita", "msBtn": "Mouse: botão {n}",
+    "whUp": "Roda: cima", "whDown": "Roda: baixo", "whLeft": "Roda: esquerda", "whRight": "Roda: direita",
+    "lctrl": "Ctrl esquerdo", "lshift": "Shift esquerdo", "lalt": "Alt esquerdo", "lwin": "Win esquerdo",
+    "rctrl": "Ctrl direito", "rshift": "Shift direito", "ralt": "Alt direito", "rwin": "Win direito",
+    "rgbToggle": "Iluminação liga/desliga", "rgbNext": "Próximo efeito", "rgbPrev": "Efeito anterior", "hueUp": "Matiz +", "hueDown": "Matiz −",
+    "satUp": "Saturação +", "satDown": "Saturação −", "valUp": "Brilho do LED +", "valDown": "Brilho do LED −", "spdUp": "Velocidade +", "spdDown": "Velocidade −",
+    "rgbNextShort": "Efeito+", "rgbPrevShort": "Efeito−", "hueUpShort": "Matiz+", "hueDownShort": "Matiz−", "satUpShort": "Sat+", "satDownShort": "Sat−",
+    "valUpShort": "Luz+", "valDownShort": "Luz−", "spdUpShort": "Vel+", "spdDownShort": "Vel−",
+    "winLock": "Trava da tecla Win",
+    "layerTap": "Segurar: camada {layer} · Tocar: {key}",
+    "to": "Ir para camada {n}", "mo": "Segurar: camada {n}", "df": "Camada padrão {n}", "tg": "Alternar camada {n}",
+    "osl": "Camada por um toque {n}", "tt": "Tocar/segurar camada {n}",
+    "macro": "Macro {n}", "kbFunction": "Função do teclado {n}", "fwFunction": "Função do firmware {n}", "system": "Função de sistema (bloqueada)"
+  },
+  "categories": {
+    "basic": "Básico", "letters": "Letras", "numbers": "Números e símbolos", "control": "Controle", "modifiers": "Modificadores",
+    "functions": "Funções", "numpad": "Numpad", "media": "Mídia", "audio": "Áudio e mídia", "system": "Sistema", "mouse": "Mouse",
+    "layers": "Camadas", "hold": "Segurar (MO)", "toggle": "Alternar (TG)", "goto": "Ir para (TO)", "lighting": "Iluminação",
+    "special": "Especial", "keyboard": "Teclado", "macros": "Macros"
+  },
+  "errors": { "disconnected": "teclado desconectado" }
+}

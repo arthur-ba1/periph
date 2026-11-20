@@ -7,15 +7,17 @@
 //! - `device_send(device, cmd)` queues a driver-specific JSON command
 //! - `set_locale(locale)` switches backend text (tray, errors) to the UI language
 //! - event `"device"`: `{ device, type: "connected" | "disconnected" | "config" | "status" | "error" | "done", ... }`
+//! - event `"open-device"` (main window): `"<id>"`, show that device (tray double click)
+//! - `flyout_*` commands and event `"tray-panel"` drive the tray window, see `flyout.rs`
 
 mod drivers;
+mod flyout;
 mod tray;
 
 use periph_core::{serde_json::Value, DeviceInfo, Driver, Event, Snapshot};
 use serde::Serialize;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
-use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
 use tauri_plugin_autostart::MacosLauncher;
 
@@ -28,7 +30,8 @@ pub struct Slot {
 
 pub struct AppState {
     pub slots: Vec<Slot>,
-    pub menu_key: Mutex<String>,
+    pub tray: tray::TrayState,
+    pub flyout: flyout::FlyoutState,
 }
 
 impl AppState {
@@ -88,14 +91,12 @@ pub fn show_main(app: &AppHandle) {
     }
 }
 
-fn toggle_main(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
-        if w.is_visible().unwrap_or(false) {
-            let _ = w.hide();
-        } else {
-            show_main(app);
-        }
+/// Show the main window, switched to `device` if given.
+pub fn open_device(app: &AppHandle, device: Option<&str>) {
+    if let Some(id) = device {
+        let _ = app.emit_to("main", "open-device", id);
     }
+    show_main(app);
 }
 
 /// The app used to be called "VT2 Control" (vt2-control.exe). Its "start with Windows" entry
@@ -138,23 +139,24 @@ fn main() {
         // Must be first: a second launch just focuses the running instance (only one may own the HID channels).
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--tray"])))
-        .manage(AppState { slots, menu_key: Mutex::new(String::new()) })
-        .invoke_handler(tauri::generate_handler![devices, device_send, set_locale, hide_window])
+        .manage(AppState { slots, tray: tray::TrayState::default(), flyout: flyout::FlyoutState::default() })
+        .invoke_handler(tauri::generate_handler![
+            devices,
+            device_send,
+            set_locale,
+            hide_window,
+            flyout::flyout_state,
+            flyout::flyout_layout,
+            flyout::flyout_hide,
+            flyout::flyout_open,
+            flyout::flyout_command,
+            flyout::flyout_autostart,
+            flyout::flyout_quit,
+        ])
         .setup(move |app| {
             let handle = app.handle().clone();
             migrate_autostart(&handle);
-            TrayIconBuilder::with_id("main")
-                .icon(tray::battery_icon(None, false))
-                .tooltip("Periph")
-                .menu(&tray::build_menu(&handle)?)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, e| tray::on_menu(app, e))
-                .on_tray_icon_event(|tray, e| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = e {
-                        toggle_main(tray.app_handle());
-                    }
-                })
-                .build(app)?;
+            tray::install(&handle)?;
 
             // One worker thread per driver.
             for (i, rx) in receivers.into_iter().enumerate() {
@@ -177,12 +179,15 @@ fn main() {
             }
             Ok(())
         })
-        .on_window_event(|window, event| {
+        .on_window_event(|window, event| match event {
             // Closing the window keeps the app in the tray.
-            if let WindowEvent::CloseRequested { api, .. } = event {
+            WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
                 let _ = window.hide();
             }
+            // The flyout behaves like a popup: any click elsewhere dismisses it.
+            WindowEvent::Focused(false) if window.label() == flyout::LABEL => flyout::on_blur(window.app_handle()),
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running Periph");

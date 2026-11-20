@@ -102,12 +102,18 @@ marked as constants/reserved are preserved. Encoding: `dualsense-proto/src/input
 | 11–21 | right adaptive trigger (mode + 10 params) |
 | 22–32 | left adaptive trigger (mode + 10 params) |
 | 37 | motor strength flags |
-| 39 | valid_flag2: bit0 brightness valid, bit2 improved rumble |
+| 39 | valid_flag2: bit0 brightness valid, bit1 lightbar setup control, bit2 improved rumble |
+| 42 | lightbar setup (0x02 = light out: releases the boot animation) |
 | 43 | player/mute brightness |
 | 44 | player LED bitmask |
 | 45–47 | lightbar R, G, B |
 
-Same layout as Linux `hid-playstation`. Every section is applied by the controller only when its
+Same layout as Linux `hid-playstation`. Periph sends the lightbar setup (byte 39 bit 1, byte 42
+= 0x02) once per connection, in a report of its own before the first colour, as `hid-playstation`
+does at init: repeated with every colour it restarts the fade-out and the colour never settles.
+The player LEDs are mirrored by the pad around the centre, so only symmetric masks are offered.
+The mic LED blink is timed by Periph (on/off every `intervalMs`); the LED's own pulse (2) has no
+speed setting. Every section is applied by the controller only when its
 valid-flag bit is set, so games send partial updates (a lightbar-only report leaves the motors
 alone). The Periph driver forwards every frame in order and runs a 5-second rumble watchdog:
 it starts on a report that sets the rumble bits with a non-zero motor, is cancelled by one that
@@ -187,20 +193,32 @@ Device id: `dualsense`. `Kind::Controller`.
 
 Config (`read_config`, camelCase; the session starts with these values on every connect):
 ```json
-{ "emulation": false, "forwardFeedback": true, "hidePhysical": true }
+{ "emulation": false, "hidePhysical": true,
+  "feedback": { "lights": "game", "haptics": true, "triggers": "game" },
+  "lightbar": { ... }, "playerLeds": { ... }, "micLed": { ... },
+  "leftTrigger": { ... }, "rightTrigger": { ... } }
 ```
 
-Status (`poll`; sent on visible changes, counters at most every 250 ms):
+Status (`poll`; input is sampled every 16 ms; counter-only events are limited to every 250 ms):
 ```json
-{ "virtualActive": true, "batteryRaw": 42, "outputReports": 1234, "hidHide": "hiding" }
+{ "virtualActive": true, "batteryRaw": 42, "outputReports": 1234, "hidHide": "hiding",
+  "controls": { "buttons": { "dpad": 8, "cross": false },
+    "sticks": [128, 128, 128, 128], "triggers": [0, 0], "touches": [null, null] } }
 ```
 `hidHide` is `"missing"` (not installed: games see two pads), `"off"` or `"hiding"`.
 `batteryRaw` is byte 53 of the input report (low nibble level, high nibble state).
+`controls` is null until a report arrives. The buttons object contains the D-pad direction and
+a boolean for each physical button. Sticks are LX, LY, RX, RY and triggers are L2, R2, all
+0–255. Each touch slot is null when inactive or an `[x, y]` coordinate on the 1920 × 1080 pad.
+Short digital presses are latched for one preview sample. Game input still forwards the original
+reports independently of this preview.
 
 Commands (`apply`, `{ "type": ..., "value": ... }`):
 - `{ "type": "refresh" }`
 - `{ "type": "emulation", "value": true }` — create/destroy the virtual device (and hide/unhide)
-- `{ "type": "forwardFeedback", "value": false }` — don't forward OUT 0x02 to the physical pad
+- `{ "type": "feedback", "value": { "lights": "periph", "haptics": false, "triggers": "game" } }`
+  — who controls each part of the pad while emulating (`"game"` / `"periph"`; `haptics`: forward
+  the game's vibration)
 - `{ "type": "hidePhysical", "value": false }` — keep the physical pad visible while emulating
 
 Disconnect codes (`Absent`): `notFound`, `emulatorRunning` (only an emulated pad is visible:
