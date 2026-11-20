@@ -1,4 +1,5 @@
 // KeyboardEvent.code -> HID usage id (keyboard page), plus labels.
+import { t } from "./i18n.svelte.js";
 const map = {
   Enter: 0x28, Escape: 0x29, Backspace: 0x2a, Tab: 0x2b, Space: 0x2c, Minus: 0x2d, Equal: 0x2e,
   BracketLeft: 0x2f, BracketRight: 0x30, Backslash: 0x31, Semicolon: 0x33, Quote: 0x34,
@@ -16,12 +17,19 @@ map.Numpad0 = 0x62;
 for (let i = 1; i <= 12; i++) map["F" + i] = 0x39 + i;
 for (let i = 13; i <= 24; i++) map["F" + i] = 0x68 + (i - 13);
 
+const ARROWS = { Up: "↑", Down: "↓", Left: "←", Right: "→" };
 const names = {};
-for (const [code, usage] of Object.entries(map)) {
-  names[usage] = code.replace(/^Key/, "").replace(/^Digit/, "").replace(/^Numpad/, "Num ").replace(/^Arrow/, "Seta ");
-}
-Object.assign(names, { 0x2c: "Espaço", 0x28: "Enter", 0x29: "Esc", 0x2a: "Backspace" });
+for (const [code, usage] of Object.entries(map)) names[usage] = code;
+Object.assign(names, { 0x28: "Enter", 0x29: "Esc", 0x2a: "Backspace" });
 
 export const codeToUsage = (code) => map[code];
-export const usageName = (u) => names[u] ?? `0x${u.toString(16).toUpperCase().padStart(2, "0")}`;
+/** Display name of a HID usage in the UI language. */
+export function usageName(u) {
+  const code = names[u];
+  if (!code) return `0x${u.toString(16).toUpperCase().padStart(2, "0")}`;
+  if (code === "Space") return t("keys.space");
+  if (code.startsWith("Arrow")) return t("keys.arrow", { dir: ARROWS[code.slice(5)] });
+  if (code.startsWith("Numpad")) return t("keys.numpad", { key: code.slice(6).replace("Divide", "/").replace("Multiply", "*").replace("Subtract", "-").replace("Add", "+").replace("Decimal", ".") });
+  return code.replace(/^Key/, "").replace(/^Digit/, "");
+}
 export const F_EXTRA = Array.from({ length: 12 }, (_, i) => 0x68 + i); // F13..F24

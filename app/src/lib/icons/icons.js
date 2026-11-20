@@ -10,8 +10,22 @@ const DECK = "M6.5 9.75h11";
 export const ICONS = {
   // brand
   // keycap + mouse: the app configures both (same mark as the app icon, app-icon.svg)
-  logo: `<rect x="2.75" y="9.25" width="9.25" height="10" rx="2.25"/><path d="M5.6 12h3.5"/><path d="M17.6 4.75c-1.9 0-3.05 1.3-3.05 3.3v7.4c0 2 1.25 3.3 3.05 3.3s3.05-1.3 3.05-3.3v-7.4c0-2-1.15-3.3-3.05-3.3Z"/><path d="M17.6 5v3"/>`,
+  // app logo: a "P" whose bowl is a ring (same shape as crates/periph-app/app-icon.svg)
+  logo: `<path d="M7.5 19.75V10"/><circle cx="12.5" cy="10" r="5"/>`,
   mouse: `<path d="${SHELL}"/><path d="M12 6.75v2.5"/>`,
+  // adaptive trigger: the curved L2/R2 paddle with a resistance mark
+  trigger: `<path d="M7.25 20.25V10.5c0-3.3 2.15-5.75 4.75-5.75s4.75 2.45 4.75 5.75v9.75"/><path d="M7.25 12.5h9.5"/><path d="M10 16.25h4"/>`,
+  // controller: rounded body with two grips, d-pad cross and two face buttons
+  gamepad: `<path d="M7.6 6.75h8.8c2.05 0 3.55 1.35 3.95 3.4l1 5.55c.4 2.15-1.95 3.55-3.45 2.05l-2.15-2.1h-7.5l-2.15 2.1c-1.5 1.5-3.85.1-3.45-2.05l1-5.55c.4-2.05 1.9-3.4 3.95-3.4Z"/><path d="M8 9.75v3.5M6.25 11.5h3.5"/><circle cx="15.4" cy="10.6" r=".95" fill="currentColor" stroke="none"/><circle cx="17.4" cy="12.6" r=".95" fill="currentColor" stroke="none"/>`,
+
+  // controller parts (DualSense pages)
+  // touchpad flanked by the two curved light strips
+  lightbar: `<rect x="7.75" y="5.25" width="8.5" height="8" rx="1.75"/><path d="M4.75 5.5c-.45 3 0 5.75 1.6 8.5M19.25 5.5c.45 3 0 5.75-1.6 8.5"/><path d="M9.5 17.75h5"/>`,
+  // row of five player LEDs in their slot
+  playerLeds: `<rect x="2.75" y="8.75" width="18.5" height="6.5" rx="3.25"/><path d="M6.4 12h.01M9.2 12h.01M12 12h.01M14.8 12h.01M17.6 12h.01"/>`,
+  mic: `<rect x="9.25" y="3.75" width="5.5" height="10" rx="2.75"/><path d="M6.25 11.25a5.75 5.75 0 0 0 11.5 0"/><path d="M12 17v3.25"/>`,
+  // emulation: the controller with a dashed virtual twin behind it
+  emulate: `<path d="M9.75 4.75h6.6c1.55 0 2.7 1 3 2.55l.55 3" stroke-dasharray="1.6 2.2"/><path d="M6.6 9.25h7.8c1.8 0 3.15 1.2 3.5 3l.85 4.85c.35 1.9-1.7 3.1-3.05 1.8l-1.9-1.85H7.2L5.3 18.9c-1.35 1.3-3.4.1-3.05-1.8l.85-4.85c.35-1.8 1.7-3 3.5-3Z"/><path d="M7 12v2.75M5.6 13.4h2.8"/><circle cx="13.75" cy="13.1" r=".9" fill="currentColor" stroke="none"/>`,
 
   // navigation
   dpi: `<path d="M4.75 16.75a7.75 7.75 0 1 1 14.5 0"/><path d="M12 14.25 15.25 9.5"/><circle cx="12" cy="14.25" r="1.35" fill="currentColor" stroke="none"/><path d="M7 11.1l.9.5M12 6.5v1M17 11.1l-.9.5"/>`,
@@ -39,4 +53,6 @@ export const ICONS = {
   info: `<circle cx="12" cy="12" r="8.25"/><path d="M12 11v5M12 7.9h.01"/>`,
   light: `<circle cx="12" cy="12" r="3.5"/><path d="M12 3.75v1.5M12 18.75v1.5M3.75 12h1.5M18.75 12h1.5M6.2 6.2l1.05 1.05M16.75 16.75l1.05 1.05M6.2 17.8l1.05-1.05M16.75 7.25l1.05-1.05"/>`,
   palette: `<circle cx="12" cy="12" r="8.25"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>`,
+  // language picker: globe with meridian and parallels
+  language: `<circle cx="12" cy="12" r="8.25"/><path d="M3.75 12h16.5M12 3.75c2.2 2.3 3.3 5 3.3 8.25s-1.1 5.95-3.3 8.25M12 3.75c-2.2 2.3-3.3 5-3.3 8.25s1.1 5.95 3.3 8.25"/>`,
 };

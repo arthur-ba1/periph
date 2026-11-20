@@ -1,0 +1,49 @@
+{
+  "_name": "Português (Brasil)",
+  "app": {
+    "noDevice": "Nenhum dispositivo",
+    "connected": "conectado",
+    "disconnected": "desconectado",
+    "online": "Online",
+    "searching": "Procurando",
+    "refresh": "Reler do dispositivo",
+    "refreshTooltip": "Reler configuração do dispositivo",
+    "language": "Idioma",
+    "minimize": "Minimizar",
+    "closeToTray": "Fechar para a bandeja",
+    "reading": "Lendo configuração…",
+    "searchingFor": "Procurando {name}",
+    "waitingText": "Conecte o dispositivo. Feche o software oficial do fabricante, porque os dois não podem usar o dispositivo ao mesmo tempo.",
+    "noDriver": "sem driver \"{id}\" no backend",
+    "noBackend": "rodando fora do app (sem backend)",
+    "toastConnected": "{name} conectado",
+    "toastDisconnected": "{name} desconectado"
+  },
+  "kinds": {
+    "mouse": "Mouse",
+    "keyboard": "Teclado",
+    "headset": "Headset",
+    "controller": "Controle",
+    "other": "Dispositivo"
+  },
+  "common": {
+    "apply": "Aplicar",
+    "saving": "Gravando…",
+    "cancel": "Cancelar",
+    "pressKey": "Pressione uma tecla…",
+    "unsupportedKey": "Tecla não suportada: {key}"
+  },
+  "keys": {
+    "space": "Espaço",
+    "arrow": "Seta {dir}",
+    "numpad": "Num {key}"
+  },
+  "tray": {
+    "open": "Abrir Periph",
+    "autostart": "Iniciar com o Windows",
+    "quit": "Sair"
+  },
+  "errors": {
+    "invalidCommand": "comando inválido"
+  }
+}

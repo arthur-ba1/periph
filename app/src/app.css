@@ -138,3 +138,19 @@
 @property --t { syntax: "<number>"; inherits: true; initial-value: 0; }
 @property --k { syntax: "<number>"; inherits: true; initial-value: 1; }
 @property --hs { syntax: "<number>"; inherits: true; initial-value: 0; }
+
+/* Battery bar while charging (BATTERY_BAR in lib/icons/Battery.svelte): a light sweeps along
+   the filled part, left to right. */
+.charging-bar [data-slot="progress-indicator"] {
+  background-image: linear-gradient(90deg, transparent, oklch(1 0 0 / 55%), transparent);
+  background-size: 45% 100%;
+  background-repeat: no-repeat;
+  animation: charging-sweep 1.8s ease-in-out infinite;
+}
+@keyframes charging-sweep {
+  from { background-position: -80% 0; }
+  to { background-position: 180% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .charging-bar [data-slot="progress-indicator"] { animation: none; background-image: none; }
+}

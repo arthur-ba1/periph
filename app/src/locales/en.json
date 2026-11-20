@@ -1,0 +1,49 @@
+{
+  "_name": "English",
+  "app": {
+    "noDevice": "No device",
+    "connected": "connected",
+    "disconnected": "disconnected",
+    "online": "Online",
+    "searching": "Searching",
+    "refresh": "Re-read from device",
+    "refreshTooltip": "Re-read the device configuration",
+    "language": "Language",
+    "minimize": "Minimize",
+    "closeToTray": "Close to tray",
+    "reading": "Reading configuration…",
+    "searchingFor": "Looking for {name}",
+    "waitingText": "Connect the device. Close the manufacturer's software, since both can't use the device at the same time.",
+    "noDriver": "no \"{id}\" driver in the backend",
+    "noBackend": "running outside the app (no backend)",
+    "toastConnected": "{name} connected",
+    "toastDisconnected": "{name} disconnected"
+  },
+  "kinds": {
+    "mouse": "Mouse",
+    "keyboard": "Keyboard",
+    "headset": "Headset",
+    "controller": "Controller",
+    "other": "Device"
+  },
+  "common": {
+    "apply": "Apply",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "pressKey": "Press a key…",
+    "unsupportedKey": "Unsupported key: {key}"
+  },
+  "keys": {
+    "space": "Space",
+    "arrow": "{dir} arrow",
+    "numpad": "Num {key}"
+  },
+  "tray": {
+    "open": "Open Periph",
+    "autostart": "Start with Windows",
+    "quit": "Quit"
+  },
+  "errors": {
+    "invalidCommand": "invalid command"
+  }
+}

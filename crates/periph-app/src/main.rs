@@ -5,6 +5,7 @@
 //! UI contract (all devices):
 //! - `devices()` -> `[{ id, name, kind, snapshot }]`
 //! - `device_send(device, cmd)` queues a driver-specific JSON command
+//! - `set_locale(locale)` switches backend text (tray, errors) to the UI language
 //! - event `"device"`: `{ device, type: "connected" | "disconnected" | "config" | "status" | "error" | "done", ... }`
 
 mod drivers;
@@ -62,6 +63,16 @@ fn device_send(state: State<AppState>, device: String, cmd: Value) -> Result<(),
     slot.tx.lock().unwrap().send(cmd).map_err(|e| e.to_string())
 }
 
+/// The UI's language (e.g. "pt-BR"); used for the tray and backend messages.
+#[tauri::command]
+fn set_locale(app: AppHandle, locale: String) {
+    periph_core::i18n::set_locale(&locale);
+    tray::refresh(&app, true);
+}
+
+/// Translation catalogs embedded by build.rs: (lang, namespace, json).
+const LOCALES: &[(&str, &str, &str)] = include!(concat!(env!("OUT_DIR"), "/locales.rs"));
+
 #[tauri::command]
 fn hide_window(app: AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
@@ -107,6 +118,11 @@ fn migrate_autostart(app: &tauri::AppHandle) {
 }
 
 fn main() {
+    for (lang, ns, json) in LOCALES {
+        if let Err(e) = periph_core::i18n::load(lang, ns, json) {
+            eprintln!("locale {ns}/{lang}: {e}");
+        }
+    }
     let start_hidden = std::env::args().any(|a| a == "--tray");
     let mut receivers = Vec::new();
     let slots = drivers::all()
@@ -123,7 +139,7 @@ fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, Some(vec!["--tray"])))
         .manage(AppState { slots, menu_key: Mutex::new(String::new()) })
-        .invoke_handler(tauri::generate_handler![devices, device_send, hide_window])
+        .invoke_handler(tauri::generate_handler![devices, device_send, set_locale, hide_window])
         .setup(move |app| {
             let handle = app.handle().clone();
             migrate_autostart(&handle);

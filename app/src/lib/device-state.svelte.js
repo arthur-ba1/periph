@@ -5,9 +5,10 @@ import { toast } from "svelte-sonner";
 // Browser-only demo mode (`?demo`): every module provides a fake connected state.
 export const DEMO = typeof window !== "undefined" && !window.__TAURI_INTERNALS__ && location.search.includes("demo");
 
-const blank = () => ({ connected: false, product: null, serial: null, reason: null, config: null, status: null, busy: false, driver: false });
+const blank = () => ({ connected: false, product: null, serial: null, reason: null, code: null, config: null, status: null, busy: false, driver: false });
 
-/** id -> { connected, product, serial, reason, config, status, busy, driver } */
+/** id -> { connected, product, serial, reason, code, config, status, busy, driver }
+ *  `code`: stable state from the driver on disconnect (e.g. "asleep", "notFound"). */
 export const devices = $state({});
 
 /** The (reactive) state object of one device, created on first use. */

@@ -20,6 +20,32 @@ use std::time::Duration;
 
 pub use serde_json;
 
+pub mod i18n;
+pub use i18n::{t, tf};
+
+/// A device that is not available right now, with a stable `code` the UI can react to
+/// (e.g. "asleep" to show "move the mouse to wake it"). Return it from [`Driver::open`]:
+/// `return Err(Absent::new("asleep", e).into())`. Other errors are shown as plain text.
+#[derive(Debug)]
+pub struct Absent {
+    pub code: &'static str,
+    pub message: String,
+}
+
+impl Absent {
+    pub fn new(code: &'static str, message: impl std::fmt::Display) -> Self {
+        Absent { code, message: message.to_string() }
+    }
+}
+
+impl std::fmt::Display for Absent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for Absent {}
+
 /// What kind of peripheral this is. Only used for icons and grouping in the UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,7 +80,8 @@ pub trait Driver: Send + Sync + 'static {
     fn info(&self) -> DeviceInfo;
 
     /// Find and open the device. `Err` means "not available right now"; its message is shown in
-    /// the UI as the reason (keep it short and human, e.g. "mouse dormindo" or "não encontrado").
+    /// the UI as a technical detail. Wrap known states in [`Absent`] so the UI can show a proper,
+    /// translated explanation for them.
     fn open(&self) -> anyhow::Result<(Box<dyn Session>, Connected)>;
 
     /// How long to wait before trying [`Driver::open`] again after it failed.
@@ -102,6 +129,8 @@ pub struct Snapshot {
     pub product: Option<String>,
     pub serial: Option<String>,
     pub reason: Option<String>,
+    /// [`Absent::code`] of the last disconnect, if the driver gave one.
+    pub code: Option<String>,
     pub config: Option<Value>,
     pub status: Option<Value>,
 }
@@ -114,8 +143,11 @@ impl Snapshot {
                 self.product = Some(product.clone());
                 self.serial = Some(serial.clone());
                 self.reason = None;
+                self.code = None;
             }
-            Event::Disconnected { reason } => *self = Snapshot { reason: Some(reason.clone()), ..Default::default() },
+            Event::Disconnected { reason, code } => {
+                *self = Snapshot { reason: Some(reason.clone()), code: code.clone(), ..Default::default() }
+            }
             Event::Config { config } => self.config = Some(config.clone()),
             Event::Status { status } => self.status = Some(status.clone()),
             Event::Error { .. } | Event::Done => {}
@@ -128,7 +160,11 @@ impl Snapshot {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Event {
     Connected { product: String, serial: String },
-    Disconnected { reason: String },
+    Disconnected {
+        reason: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<String>,
+    },
     Config { config: Value },
     Status { status: Value },
     Error { message: String },
@@ -154,13 +190,17 @@ pub enum TrayItem {
     Separator,
 }
 
+fn disconnected(e: &anyhow::Error) -> Event {
+    Event::Disconnected { reason: e.to_string(), code: e.downcast_ref::<Absent>().map(|a| a.code.to_string()) }
+}
+
 /// Runs one driver forever (until the command channel closes), reporting through `emit`.
 pub fn run(driver: &dyn Driver, rx: Receiver<Value>, emit: impl Fn(Event)) {
     loop {
         let (mut dev, info) = match driver.open() {
             Ok(x) => x,
             Err(e) => {
-                emit(Event::Disconnected { reason: e.to_string() });
+                emit(disconnected(&e));
                 match rx.recv_timeout(driver.retry_interval()) {
                     Ok(_) => emit(Event::Done), // a command for an absent device: just release the UI
                     Err(RecvTimeoutError::Timeout) => {}
@@ -173,7 +213,7 @@ pub fn run(driver: &dyn Driver, rx: Receiver<Value>, emit: impl Fn(Event)) {
         match dev.read_config() {
             Ok(config) => emit(Event::Config { config }),
             Err(e) => {
-                emit(Event::Disconnected { reason: e.to_string() });
+                emit(disconnected(&e));
                 std::thread::sleep(driver.retry_interval());
                 continue;
             }
@@ -188,7 +228,7 @@ pub fn run(driver: &dyn Driver, rx: Receiver<Value>, emit: impl Fn(Event)) {
                         Ok(config) => emit(Event::Config { config }),
                         Err(e) => {
                             emit(Event::Done);
-                            emit(Event::Disconnected { reason: e.to_string() });
+                            emit(disconnected(&e));
                             break;
                         }
                     }
@@ -198,7 +238,7 @@ pub fn run(driver: &dyn Driver, rx: Receiver<Value>, emit: impl Fn(Event)) {
                     Ok(Some(status)) => emit(Event::Status { status }),
                     Ok(None) => {}
                     Err(e) => {
-                        emit(Event::Disconnected { reason: e.to_string() });
+                        emit(disconnected(&e));
                         break;
                     }
                 },
@@ -210,7 +250,7 @@ pub fn run(driver: &dyn Driver, rx: Receiver<Value>, emit: impl Fn(Event)) {
 
 /// Decode a JSON command into the driver's own typed enum (usually `#[serde(tag = "type")]`).
 pub fn parse<T: serde::de::DeserializeOwned>(cmd: Value) -> anyhow::Result<T> {
-    serde_json::from_value(cmd).map_err(|e| anyhow::anyhow!("comando inválido: {e}"))
+    serde_json::from_value(cmd).map_err(|e| anyhow::anyhow!("{}: {e}", t("errors.invalidCommand")))
 }
 
 #[cfg(test)]
@@ -233,7 +273,7 @@ mod tests {
         }
         fn open(&self) -> anyhow::Result<(Box<dyn Session>, Connected)> {
             if self.opens.fetch_add(1, Ordering::SeqCst) == 0 {
-                anyhow::bail!("não encontrado");
+                return Err(Absent::new("notFound", "not found").into());
             }
             Ok((Box::new(FakeSession { value: 1 }), Connected { product: "Fake".into(), serial: "1".into() }))
         }
@@ -270,7 +310,7 @@ mod tests {
         let mut snap = Snapshot::default();
         let events = events.lock().unwrap();
         events.iter().for_each(|e| snap.update(e));
-        assert!(matches!(events[0], Event::Disconnected { .. }));
+        assert!(matches!(&events[0], Event::Disconnected { code: Some(c), .. } if c == "notFound"));
         assert!(snap.connected);
         assert_eq!(snap.config, Some(serde_json::json!({ "value": 7 })));
         assert!(events.iter().any(|e| matches!(e, Event::Error { .. })));

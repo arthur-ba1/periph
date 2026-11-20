@@ -2,7 +2,7 @@
 //! through `Driver::tray` (header + quick controls); item ids are prefixed with the driver id.
 
 use crate::{show_main, AppState};
-use periph_core::{Tray, TrayItem};
+use periph_core::{t, Tray, TrayItem};
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Manager, Wry};
@@ -97,7 +97,7 @@ pub fn refresh(app: &AppHandle, force: bool) {
     let _ = icon.set_icon(Some(battery_icon(battery.map(|b| b.0), battery.is_some_and(|b| b.1))));
 
     let auto = app.autolaunch().is_enabled().unwrap_or(false);
-    let key = format!("{auto}|{:?}", secs.iter().map(|(id, t)| (id, &t.header, &t.items)).collect::<Vec<_>>());
+    let key = format!("{auto}|{}|{:?}", periph_core::i18n::locale(), secs.iter().map(|(id, t)| (id, &t.header, &t.items)).collect::<Vec<_>>());
     let state = app.state::<AppState>();
     let mut last = state.menu_key.lock().unwrap();
     if force || *last != key {
@@ -126,7 +126,7 @@ fn item(app: &AppHandle, dev: &str, it: &TrayItem) -> tauri::Result<Box<dyn IsMe
 pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let auto = app.autolaunch().is_enabled().unwrap_or(false);
     let menu = Menu::new(app)?;
-    menu.append(&MenuItem::with_id(app, "open", "Abrir Periph", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "open", t("tray.open"), true, None::<&str>)?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
     for (dev, t) in sections(app) {
         menu.append(&MenuItem::with_id(app, format!("{dev}/header"), &t.header, false, None::<&str>)?)?;
@@ -135,9 +135,9 @@ pub fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         }
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
-    menu.append(&CheckMenuItem::with_id(app, "autostart", "Iniciar com o Windows", true, auto, None::<&str>)?)?;
+    menu.append(&CheckMenuItem::with_id(app, "autostart", t("tray.autostart"), true, auto, None::<&str>)?)?;
     menu.append(&PredefinedMenuItem::separator(app)?)?;
-    menu.append(&MenuItem::with_id(app, "quit", "Sair", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "quit", t("tray.quit"), true, None::<&str>)?)?;
     Ok(menu)
 }
 

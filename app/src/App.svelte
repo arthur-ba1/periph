@@ -13,6 +13,7 @@
   import * as Select from "$lib/components/ui/select/index.js";
   import Icon from "$lib/icons/Icon.svelte";
   import { MODULES, devices, displayName, initDevices, send } from "$lib/devices.svelte.js";
+  import { t, i18n, LANGUAGES, setLocale } from "$lib/i18n.svelte.js";
 
   // which device is being configured (persisted; "mouse"/"keyboard" are pre-registry ids)
   const LEGACY = { mouse: "vt2", keyboard: "via" };
@@ -29,8 +30,8 @@
   let ready = $derived(mod ? (mod.ready?.(dev) ?? !!dev.config) : false);
   let waiting = $derived(
     mod?.waiting?.(dev) ?? {
-      title: dev?.connected ? "Lendo configuração…" : `Procurando ${mod?.name ?? "dispositivo"}`,
-      text: "Conecte o dispositivo. Feche o software oficial do fabricante, porque os dois não podem usar o dispositivo ao mesmo tempo.",
+      title: dev?.connected ? t("app.reading") : t("app.searchingFor", { name: mod ? displayName(mod) : t("kinds.other") }),
+      text: t("app.waitingText"),
     },
   );
 
@@ -62,7 +63,7 @@
         <Select.Root type="single" value={deviceId} onValueChange={(v) => v && (deviceId = v)}>
           <Select.Trigger size="sm" class="hover:bg-accent h-8 gap-2 border-none bg-transparent px-2 font-semibold shadow-none dark:bg-transparent">
             <Icon name={mod?.icon ?? "logo"} size={15} />
-            {mod ? displayName(mod) : "Nenhum dispositivo"}
+            {mod ? displayName(mod) : t("app.noDevice")}
             <span class="size-1.5 rounded-full {dev?.connected ? 'bg-success' : 'bg-muted-foreground/40'}"></span>
           </Select.Trigger>
           <Select.Content class="min-w-60">
@@ -72,7 +73,7 @@
                   <Icon name={m.icon} size={16} />
                   <div class="flex flex-col">
                     <span class="font-medium">{displayName(m)}</span>
-                    <span class="text-muted-foreground text-xs">{m.kind} · {devices[m.id].connected ? "conectado" : "desconectado"}</span>
+                    <span class="text-muted-foreground text-xs">{t(`kinds.${m.kind}`)} · {devices[m.id].connected ? t("app.connected") : t("app.disconnected")}</span>
                   </div>
                 </div>
               </Select.Item>
@@ -86,19 +87,30 @@
             <mod.Badges />
           </div>
         {/if}
+        <!-- language -->
+        <Select.Root type="single" value={i18n.locale} onValueChange={(v) => v && setLocale(v)}>
+          <Select.Trigger size="sm" aria-label={t("app.language")} class="text-muted-foreground hover:bg-accent hover:text-foreground mr-1 h-8 gap-1.5 border-none bg-transparent px-2 text-xs font-medium uppercase shadow-none dark:bg-transparent [&>svg:last-child]:hidden">
+            <Icon name="language" size={15} />{i18n.locale.split("-")[0]}
+          </Select.Trigger>
+          <Select.Content align="end">
+            {#each LANGUAGES as l}
+              <Select.Item value={l.code} label={l.name}>{l.name}</Select.Item>
+            {/each}
+          </Select.Content>
+        </Select.Root>
         <Tooltip.Root>
           <Tooltip.Trigger>
             {#snippet child({ props })}
-              <Button {...props} variant="ghost" size="icon-sm" class="mr-2" disabled={!mod} onclick={() => send(deviceId, { type: "refresh" })} aria-label="Reler do dispositivo">
+              <Button {...props} variant="ghost" size="icon-sm" class="mr-2" disabled={!mod} onclick={() => send(deviceId, { type: "refresh" })} aria-label={t("app.refresh")}>
                 <Icon name="refresh" class={dev?.busy ? "animate-spin" : ""} />
               </Button>
             {/snippet}
           </Tooltip.Trigger>
-          <Tooltip.Content>Reler configuração do dispositivo</Tooltip.Content>
+          <Tooltip.Content>{t("app.refreshTooltip")}</Tooltip.Content>
         </Tooltip.Root>
         <Separator orientation="vertical" class="h-5" />
-        <button class="text-muted-foreground hover:bg-accent hover:text-foreground grid h-full w-11 place-items-center transition-colors" onclick={() => win?.minimize()} aria-label="Minimizar"><Icon name="minimize" /></button>
-        <button class="text-muted-foreground hover:bg-destructive grid h-full w-11 place-items-center transition-colors hover:text-white" onclick={() => invoke("hide_window").catch(() => win?.hide())} aria-label="Fechar para a bandeja"><Icon name="close" /></button>
+        <button class="text-muted-foreground hover:bg-accent hover:text-foreground grid h-full w-11 place-items-center transition-colors" onclick={() => win?.minimize()} aria-label={t("app.minimize")}><Icon name="minimize" /></button>
+        <button class="text-muted-foreground hover:bg-destructive grid h-full w-11 place-items-center transition-colors hover:text-white" onclick={() => invoke("hide_window").catch(() => win?.hide())} aria-label={t("app.closeToTray")}><Icon name="close" /></button>
       </div>
     </header>
 
@@ -127,7 +139,7 @@
           <Icon name={mod.icon} size={22} class="text-muted-foreground" />
           <div class="flex min-w-0 flex-col">
             <span class="truncate text-sm font-medium">{displayName(mod)}</span>
-            <span class="text-xs {dev.connected ? 'text-success' : 'text-warning'}">{dev.connected ? "Online" : "Procurando"}</span>
+            <span class="text-xs {dev.connected ? 'text-success' : 'text-warning'}">{dev.connected ? t("app.online") : t("app.searching")}</span>
           </div>
         </div>
       {/if}
@@ -150,7 +162,7 @@
           <h2 class="mt-3 text-lg font-semibold tracking-tight">{waiting.title}</h2>
           <p class="text-muted-foreground max-w-sm text-sm">{waiting.text}</p>
           {#if !dev.driver && !dev.reason}
-            <code class="text-muted-foreground/70 mt-1 font-mono text-[11px]">sem driver "{mod.id}" no backend</code>
+            <code class="text-muted-foreground/70 mt-1 font-mono text-[11px]">{t("app.noDriver", { id: mod.id })}</code>
           {:else if dev.reason && !waiting.hideReason}
             <code class="text-muted-foreground/70 mt-1 font-mono text-[11px]">{dev.reason}</code>
           {/if}

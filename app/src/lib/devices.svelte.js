@@ -11,6 +11,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { toast } from "svelte-sonner";
 import { devices, deviceState, setDemoHandler, DEMO } from "./device-state.svelte.js";
+import { t } from "./i18n.svelte.js";
 
 export { devices, deviceState, send, DEMO } from "./device-state.svelte.js";
 
@@ -30,23 +31,24 @@ export const moduleFor = (id) => MODULES.find((m) => m.id === id);
 
 /** Name to show for a device (modules may derive it from the config, e.g. the VIA definition). */
 export const displayName = (m) => m.displayName?.(devices[m.id]) ?? m.name;
+// (module `name` may be a getter calling t(), so it follows the UI language)
 
 function onEvent(id, e) {
   const d = devices[id], m = moduleFor(id);
   if (!d) return;
   switch (e.type) {
     case "connected":
-      Object.assign(d, { connected: true, product: e.product, serial: e.serial, reason: null });
+      Object.assign(d, { connected: true, product: e.product, serial: e.serial, reason: null, code: null });
       break;
     case "disconnected":
       // only announce losing a device we actually had loaded (retries while absent stay quiet)
-      if (d.config) toast.warning(`${displayName(m)} desconectado`);
-      Object.assign(d, { connected: false, config: null, status: null, reason: e.reason, busy: false });
+      if (d.config) toast.warning(t("app.toastDisconnected", { name: displayName(m) }));
+      Object.assign(d, { connected: false, config: null, status: null, reason: e.reason, code: e.code ?? null, busy: false });
       break;
     case "config": {
       const first = !d.config;
       d.config = e.config;
-      if (first) toast.success(`${displayName(m)} conectado`);
+      if (first) toast.success(t("app.toastConnected", { name: displayName(m) }));
       break;
     }
     case "status":
@@ -72,7 +74,7 @@ export async function initDevices() {
       Object.assign(devices[entry.id], entry.snapshot, { driver: true });
     }
   } catch {
-    for (const d of Object.values(devices)) d.reason = "rodando fora do app (sem backend)";
+    for (const d of Object.values(devices)) d.reason = t("app.noBackend");
     return;
   }
   await listen("device", ({ payload }) => onEvent(payload.device, payload));
