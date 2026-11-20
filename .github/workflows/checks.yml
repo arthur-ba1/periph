@@ -1,0 +1,38 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  no-attribution-trailers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject Co-Authored-By / "Generated with Claude Code" in commit messages
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            range="${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
+          elif [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${{ github.event.before }}" 2>/dev/null; then
+            range="${{ github.sha }}"
+          else
+            range="${{ github.event.before }}..${{ github.sha }}"
+          fi
+          bad=0
+          for c in $(git rev-list "$range"); do
+            if git log -1 --format=%B "$c" | grep -qiE '^[[:space:]]*co-authored-by:|generated with \[?claude code'; then
+              echo "::error::commit $c has an attribution trailer"; bad=1
+            fi
+          done
+          exit $bad
+
+  translations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node app/scripts/check-i18n.mjs
