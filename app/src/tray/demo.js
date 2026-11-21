@@ -1,5 +1,5 @@
 // Fake flyout payloads for UI work in the browser: ?tray (quick settings of the mouse),
-// ?tray=menu, ?tray=pad, ?tray=none (no device connected).
+// ?tray=menu, ?tray=pad, ?tray=kbd, ?tray=none (no device connected).
 const mouse = {
   id: "vt2",
   kind: "mouse",
@@ -38,7 +38,25 @@ const pad = {
     { type: "submenu", label: "Player LEDs", items: ["1", "2", "3", "4", "None", "All"].flatMap((label, i) => [...(i === 4 ? [{ type: "separator" }] : []), { type: "check", id: `leds:${i}`, label, checked: i === 0 }]) },
   ],
 };
-const keyboard = { id: "via", kind: "keyboard", name: "Keychron Q1", connected: true, header: "Keychron Q1", battery: null, items: [] };
+const KBD_COLORS = [[255, 0, 0], [255, 128, 0], [255, 230, 0], [0, 255, 60], [0, 200, 255], [40, 60, 255], [170, 0, 255], [255, 255, 255]];
+const keyboard = {
+  id: "via",
+  kind: "keyboard",
+  name: "AKKO 5075",
+  connected: true,
+  header: "AKKO 5075",
+  battery: null,
+  items: [
+    {
+      type: "submenu",
+      label: "Effect",
+      items: ["Off", "Solid color", "Breathing", "Color cycle", "Cycle left → right", "Cycle up → down", "Rainbow chevron", "Pinwheel", "Spiral", "Raindrops", "Typing heatmap", "Reactive"].map((label, i) => ({ type: "check", id: `effect:${i}`, label, checked: i === 2 })),
+    },
+    { type: "colors", label: "Color", options: KBD_COLORS.map((rgb, i) => ({ id: `color:${i}`, rgb, checked: i === 5 })) },
+    { type: "slider", id: "speed", label: "Effect speed", value: 25, min: 0, max: 100, step: 5, unit: "%" },
+    { type: "slider", id: "bright", label: "Brightness", value: 80, min: 0, max: 100, step: 5, unit: "%" },
+  ],
+};
 
 export function demoPanel(search) {
   const mode = new URLSearchParams(search).get("tray");
@@ -46,7 +64,7 @@ export function demoPanel(search) {
   return structuredClone({
     seq: 1,
     mode: mode === "menu" ? "menu" : "quick",
-    device: mode === "none" ? null : mode === "pad" ? "dualsense" : "vt2",
+    device: mode === "none" ? null : mode === "pad" ? "dualsense" : mode === "kbd" ? "via" : "vt2",
     devices,
     autostart: true,
     locale: null,

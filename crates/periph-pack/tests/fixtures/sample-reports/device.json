@@ -1,0 +1,49 @@
+{
+  "transport": {
+    "type": "reports",
+    "interface": "command",
+    "send": "feature",
+    "reportLength": 8,
+    "checksum": { "type": "sum8", "from": 1, "to": -2, "at": -1 },
+    "afterWrite": ["04 0F 01"]
+  },
+  "reads": [
+    {
+      "id": "config",
+      "request": "04 01",
+      "response": { "from": "feature", "reportId": 4, "length": 8, "match": [{ "at": 0, "equals": 1 }] }
+    }
+  ],
+  "settings": [
+    { "id": "dpi", "from": "config", "at": 1, "type": "u16le", "range": { "min": 100, "max": 16000, "step": 50 }, "send": "04 02 {value}" },
+    { "id": "led", "from": "config", "at": 3, "type": "bit", "bit": 0, "send": "04 03 {value}" },
+    { "id": "mode", "from": "config", "at": 4, "type": "u8", "values": [{ "value": "slow", "raw": 0 }, { "value": "fast", "raw": 1 }], "send": "04 04 {value}" },
+    { "id": "colors", "from": "config", "at": 5, "type": "u8", "count": 2, "range": { "min": 0, "max": 255 }, "send": "04 05 {index} {value}" },
+    { "id": "sleep", "type": "u8", "range": { "min": 1, "max": 30 }, "unit": "min", "default": 10, "send": "04 06 {value}" },
+    { "id": "firmware", "from": "config", "at": 0, "type": "u8", "readOnly": true }
+  ],
+  "pages": [{ "id": "main", "settings": ["dpi", "led", "mode", "colors", "sleep", "firmware"] }],
+  "examples": [
+    {
+      "responses": { "config": "01 90 01 01 00 10 20" },
+      "set": { "id": "dpi", "value": 800 },
+      "writes": ["04 02 20 03 00 00 00 25", "04 0F 01 00 00 00 00 10"]
+    },
+    {
+      "note": "bit 0 cleared, bit 1 kept",
+      "responses": { "config": "01 90 01 03 00 10 20" },
+      "set": { "id": "led", "value": false },
+      "writes": ["04 03 02 00 00 00 00 05", "04 0F 01 00 00 00 00 10"]
+    },
+    {
+      "responses": { "config": "01 90 01 01 00 10 20" },
+      "set": { "id": "colors", "index": 1, "value": 200 },
+      "writes": ["04 05 01 C8 00 00 00 CE", "04 0F 01 00 00 00 00 10"]
+    },
+    {
+      "responses": { "config": "01 90 01 01 00 10 20" },
+      "set": { "id": "sleep", "value": 5 },
+      "writes": ["04 06 05 00 00 00 00 0B", "04 0F 01 00 00 00 00 10"]
+    }
+  ]
+}

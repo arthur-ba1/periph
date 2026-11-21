@@ -11,7 +11,7 @@
 //!
 //! This tool never sends output or feature reports to the device.
 
-mod descriptor;
+use periph_pack::descriptor;
 
 use anyhow::Result;
 use hidapi::{DeviceInfo, HidApi};

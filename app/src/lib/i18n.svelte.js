@@ -25,6 +25,11 @@ for (const [path, json] of Object.entries(dev)) {
   if (!id.startsWith("_")) flatten(json, id, (catalogs[lang(path)] ??= {}));
 }
 
+/** Add a catalog at runtime (device packages): its keys become `<ns>.<key>`. */
+export function addCatalog(lang, ns, json) {
+  flatten(json, ns, (catalogs[lang] ??= {}));
+}
+
 /** Languages with an app-wide catalog: [{ code: "pt-BR", name: "Português (Brasil)" }, ...] */
 export const LANGUAGES = Object.keys(app)
   .map((p) => ({ code: lang(p), name: catalogs[lang(p)]._name ?? lang(p) }))

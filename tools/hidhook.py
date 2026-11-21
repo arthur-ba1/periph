@@ -11,7 +11,7 @@ Usage:
           only when --module has no hidapi exports, to avoid logging each call twice.
 
 Each line: {"t": unix_time, "ev": "call"|"open"|..., "fn": ..., "path": ..., "data": "hex"}.
-Write a marker line while it runs by appending text to captures/marker.txt
+Write a marker line while it runs by appending text to marker.txt next to the log
 (each new line there is copied into the log as {"ev":"marker","text":...}).
 """
 import argparse
@@ -31,10 +31,11 @@ def main():
     ap.add_argument("--process", default="A HUB.exe")
     ap.add_argument("--module", default="RapooDevice.dll", help="DLL exporting hidapi functions, or '' for none")
     ap.add_argument("--winhid", choices=["auto", "on", "off"], default="auto")
-    ap.add_argument("--marker", default=os.path.join(HERE, "..", "captures", "marker.txt"))
+    ap.add_argument("--marker", help="marker file (default: marker.txt next to the log)")
     a = ap.parse_args()
 
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
+    a.marker = a.marker or os.path.join(os.path.dirname(os.path.abspath(a.out)), "marker.txt")
     out = open(a.out, "a", encoding="utf-8", buffering=1)
 
     def log(obj):
@@ -55,6 +56,7 @@ def main():
     script.on("message", on_message)
     script.load()
     print(f"hooked {a.process}, logging to {a.out}", flush=True)
+    print(f"markers: append a line to {a.marker} before each change", flush=True)
 
     open(a.marker, "a").close()
     seen = os.path.getsize(a.marker)

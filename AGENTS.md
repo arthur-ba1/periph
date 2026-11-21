@@ -15,6 +15,8 @@ implementation: a Rust driver plus a Svelte module that share an id.
   user-mode channel to the virtual pad driver, HidHide client (hide the physical pad)
 - The virtual DualSense kernel driver (`periph-vpad`, KMDF + VHF) lives in its own repository;
   `crates/dualsense-vpad` is its client. See `docs/dualsense-implementation.md`
+- `crates/periph-pack`: device packages (JSON devices loaded at runtime, no rebuild) and the engine
+  that runs them; example packages in `packages/`. See `docs/device-packages.md`
 - `crates/vt2-probe`: read-only HID discovery (`vt2-probe --vid <hex>`, `via-probe`)
 - `app/src/devices/<id>/`: device UI modules, auto-discovered; `app/src/lib/devices.svelte.js`
   is the registry, `app/src/lib/device-state.svelte.js` the shared state and `send()`

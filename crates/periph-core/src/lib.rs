@@ -181,7 +181,8 @@ pub struct Tray {
     /// Battery indicator for this device's tray icon and flyout: (percent, charging).
     pub battery: Option<(u8, bool)>,
     /// Quick settings in the flyout: a `Check` is a switch, a `Submenu` of `Check`s a choice
-    /// group (keep its option labels short), `Colors` a row of swatches, an `Action` a button.
+    /// group (keep its option labels short), `Colors` a row of swatches, a `Slider` a range, an
+    /// `Action` a button.
     pub items: Vec<TrayItem>,
 }
 
@@ -194,6 +195,9 @@ pub enum TrayItem {
     Submenu { label: String, items: Vec<TrayItem> },
     /// Colour swatches (e.g. lightbar presets); clicking one sends its `id`.
     Colors { label: String, options: Vec<TrayColor> },
+    /// A range (e.g. brightness); releasing it sends `"<id>:<value>"`. `unit` is appended to the
+    /// shown value ("%").
+    Slider { id: String, label: String, value: u32, min: u32, max: u32, step: u32, unit: String },
     Separator,
 }
 
@@ -209,12 +213,22 @@ fn disconnected(e: &anyhow::Error) -> Event {
 }
 
 /// Runs one driver forever (until the command channel closes), reporting through `emit`.
+/// While the device stays absent, a retry that fails the same way is not reported again.
 pub fn run(driver: &dyn Driver, rx: Receiver<Value>, emit: impl Fn(Event)) {
+    // reason and code of the last failed open, while the device is absent
+    let mut absent: Option<(String, Option<String>)> = None;
     loop {
         let (mut dev, info) = match driver.open() {
             Ok(x) => x,
             Err(e) => {
-                emit(disconnected(&e));
+                let event = disconnected(&e);
+                if let Event::Disconnected { reason, code } = &event {
+                    let key = Some((reason.clone(), code.clone()));
+                    if absent != key {
+                        absent = key;
+                        emit(event);
+                    }
+                }
                 match rx.recv_timeout(driver.retry_interval()) {
                     Ok(_) => emit(Event::Done), // a command for an absent device: just release the UI
                     Err(RecvTimeoutError::Timeout) => {}
@@ -223,6 +237,7 @@ pub fn run(driver: &dyn Driver, rx: Receiver<Value>, emit: impl Fn(Event)) {
                 continue;
             }
         };
+        absent = None;
         emit(Event::Connected { product: info.product, serial: info.serial });
         match dev.read_config() {
             Ok(config) => emit(Event::Config { config }),
@@ -328,5 +343,33 @@ mod tests {
         assert!(snap.connected);
         assert_eq!(snap.config, Some(serde_json::json!({ "value": 7 })));
         assert!(events.iter().any(|e| matches!(e, Event::Error { .. })));
+    }
+
+    /// Always absent, the same way every time.
+    struct Gone;
+    impl Driver for Gone {
+        fn info(&self) -> DeviceInfo {
+            DeviceInfo { id: "gone", name: "Gone", kind: Kind::Other }
+        }
+        fn open(&self) -> anyhow::Result<(Box<dyn Session>, Connected)> {
+            Err(Absent::new("notFound", "not found").into())
+        }
+        fn retry_interval(&self) -> Duration {
+            Duration::from_millis(2)
+        }
+    }
+
+    #[test]
+    fn repeated_absence_is_reported_once() {
+        let (tx, rx) = channel();
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let ev = events.clone();
+        let t = std::thread::spawn(move || run(&Gone, rx, move |e| ev.lock().unwrap().push(e)));
+        std::thread::sleep(Duration::from_millis(40));
+        drop(tx);
+        t.join().unwrap();
+        let events = events.lock().unwrap();
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert!(matches!(&events[0], Event::Disconnected { code: Some(c), .. } if c == "notFound"));
     }
 }

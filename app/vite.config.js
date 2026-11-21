@@ -13,6 +13,7 @@ export default defineConfig({
   ],
   resolve: { alias: { $lib: path.resolve("./src/lib") } },
   clearScreen: false,
-  server: { port: 5173, strictPort: true },
+  // fs.allow: the demo can load the example device packages in ../packages (?demo&packages)
+  server: { port: 5173, strictPort: true, fs: { allow: [".."] } },
   build: { target: "es2022", outDir: "dist", emptyOutDir: true },
 });

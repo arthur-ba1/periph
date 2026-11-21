@@ -1,0 +1,11 @@
+{
+  "pages": { "main": "Main" },
+  "settings": {
+    "dpi": { "label": "DPI" },
+    "led": { "label": "LED" },
+    "mode": { "label": "Mode" },
+    "colors": { "label": "Colors" },
+    "sleep": { "label": "Sleep after" },
+    "firmware": { "label": "Firmware" }
+  }
+}

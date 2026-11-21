@@ -3,6 +3,7 @@
   // the page's slot (ui.slot) and becomes interactive; elsewhere it sits bottom-right and shows
   // through the cards as frosted glass.
   import { onMount, untrack } from "svelte";
+  import { followLayout } from "$lib/follow-layout.js";
   import MouseRender from "./components/mouse-render.svelte";
   import { vt2, prefs, ui, BUTTONS } from "./store.svelte.js";
   import { actionLabel } from "./actions.js";
@@ -74,19 +75,23 @@
     ui.settled = docked && !animating;
   });
 
-  // Follow layout every frame (scroll, resize, popovers locking scroll, content changes).
-  // measure() only writes state when values actually change, so idle frames are cheap.
+  // Follow layout on scroll, resize, clicks and tab changes (a burst of frames covers the
+  // fly-in and the docking transition). measure() only writes state when values change.
+  let follow = null;
   onMount(() => {
-    let raf;
-    const tick = () => {
-      measure();
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
+    follow = followLayout(measure, { scroller: mainEl });
     return () => {
-      cancelAnimationFrame(raf);
+      follow.destroy();
+      follow = null;
       ui.settled = false;
     };
+  });
+  $effect(() => {
+    tab;
+    const slot = ui.slot;
+    // the page under {#key} is replaced on tab change: observe the new one once it is in
+    queueMicrotask(() => follow?.observe([shellEl, mainEl, slot, mainEl?.firstElementChild]));
+    follow?.burst(1000);
   });
 </script>
 

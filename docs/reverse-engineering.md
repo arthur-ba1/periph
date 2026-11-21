@@ -12,6 +12,9 @@ something the official app was seen sending. Discovery tools in this repo only r
 
 ## 1. Find the device's HID interfaces (read-only)
 
+`periph-pack probe` (`periph-pack probe --vid <hex>`, `--listen <s>`) does the same for any vendor
+and ships in the release kit; `vt2-probe` below is the repository's older tool.
+
 ```
 cargo run -p vt2-probe -- --vid 24ae            # list interfaces + parsed report descriptors
 cargo run -p vt2-probe -- --vid 24ae --listen 10  # also print input reports for 10 s

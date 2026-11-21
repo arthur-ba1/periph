@@ -11,6 +11,7 @@
   import { onMount } from "svelte";
   import { describe, keycodeFromEvent } from "./keycodes.js";
   import { t } from "$lib/i18n.svelte.js";
+  import { prefs } from "./store.svelte.js";
 
   let {
     def,
@@ -210,15 +211,64 @@
   });
 
   // legend font size (px) that fits the cap's top face: width-limited for long labels
+  // legend size: measured with the real font so every legend fits its keycap whole (never clipped)
+  let measureCtx;
+  function textWidth(text) {
+    if (typeof document === "undefined") return [...text].length * 0.7 * 100;
+    measureCtx ??= document.createElement("canvas").getContext("2d");
+    measureCtx.font = `650 100px ${getComputedStyle(document.body).fontFamily}`;
+    return measureCtx.measureText(text).width * 1.04; // + bold/hinting slack
+  }
   function fit(text, k) {
-    const avail = k.w * unit - unit * 0.42; // top face minus side walls and inner padding
-    const byWidth = avail / Math.max(1, [...text].length * 0.6);
-    return Math.max(7, Math.min(unit * 0.27, byWidth)).toFixed(1);
+    // top face minus cap padding (0.06), side walls (0.11) and inner padding (0.07), each side
+    const avail = k.w * unit - unit * 0.48;
+    const byWidth = text ? (avail * 100) / textWidth(text) : Infinity;
+    return Math.max(5, Math.min(unit * 0.27, byWidth)).toFixed(1);
   }
   const fitKnob = (text) => Math.max(6, Math.min(unit * 0.17, (unit * 0.5) / Math.max(1, [...text].length * 0.6))).toFixed(1);
 
   let mini = $derived(unit < 20); // sidebar thumbnail: no labels, no tilt
   let pad = $derived(Math.round(unit * CASE_PAD));
+
+  // Plate wells overhang their key by WELL_E (key units). Where two wells form an inside corner
+  // (the inverted T of the arrows, the step from Enter to Right Shift...) a fillet of radius
+  // WELL_R rounds it, so clusters read as one rounded cut-out.
+  const WELL_E = 0.05, WELL_R = 0.1;
+  // Outer corners of a well are rounded only where they are a corner of the whole cluster; where
+  // a neighbour continues the cut-out the corner stays square, so stacked keys (Home..End) read
+  // as one unbroken well instead of pinched segments. Per key: "tl tr br bl" in px.
+  const CORNER_R = 0.12;
+  let wellRadius = $derived.by(() => {
+    const keys = def.keys.list.filter((k) => k.encoder === null);
+    const w = keys.map((k) => ({ x0: k.x - WELL_E, y0: k.y - WELL_E, x1: k.x + k.w + WELL_E, y1: k.y + k.h + WELL_E }));
+    const inside = (px, py) => w.some((r) => r.x0 < px && px < r.x1 && r.y0 < py && py < r.y1);
+    const e = 1e-3, R = `${(CORNER_R * unit).toFixed(1)}px`;
+    const corner = (x, y, sx, sy) => (inside(x + sx * e, y + sy * e) || inside(x + sx * e, y - sy * e) || inside(x - sx * e, y + sy * e) ? "0" : R);
+    const out = new Map();
+    keys.forEach((k, i) => {
+      const r = w[i];
+      out.set(`${k.row},${k.col},${k.x}`, [corner(r.x0, r.y0, -1, -1), corner(r.x1, r.y0, 1, -1), corner(r.x1, r.y1, 1, 1), corner(r.x0, r.y1, -1, 1)].join(" "));
+    });
+    return out;
+  });
+  let fillets = $derived.by(() => {
+    const w = def.keys.list.filter((k) => k.encoder === null)
+      .map((k) => ({ x0: k.x - WELL_E, y0: k.y - WELL_E, x1: k.x + k.w + WELL_E, y1: k.y + k.h + WELL_E }));
+    const inside = (px, py) => w.some((r) => r.x0 < px && px < r.x1 && r.y0 < py && py < r.y1);
+    const out = new Map();
+    const eps = 1e-3;
+    for (const a of w) for (const b of w) {
+      if (a === b) continue;
+      for (const vx of [a.x0, a.x1]) for (const hy of [b.y0, b.y1]) {
+        if (!(b.x0 < vx && vx < b.x1 && a.y0 < hy && hy < a.y1)) continue;
+        const empty = [[-1, -1], [1, -1], [-1, 1], [1, 1]].filter(([sx, sy]) => !inside(vx + sx * eps, hy + sy * eps));
+        if (empty.length !== 1) continue;
+        const [sx, sy] = empty[0];
+        out.set(`${vx.toFixed(3)},${hy.toFixed(3)}`, { x: sx < 0 ? vx - WELL_R : vx, y: sy < 0 ? hy - WELL_R : hy, sx, sy });
+      }
+    }
+    return [...out.values()];
+  });
 
   // KLE colors only separate alphas / mods / accents; all caps stay white, mods a touch greyer
   const tone = (c) => {
@@ -232,10 +282,26 @@
     bind:this={caseEl}
     class="case relative mx-auto select-none {fx ? `lit fx-${fx}` : ''}"
     class:mini
+    class:black={prefs.color === "black"}
+    class:solid={prefs.caps === "solid"}
     class:rainbow={fx && RAINBOW.has(fx)}
     style="width:{def.keys.width * unit + pad * 2}px; height:{def.keys.height * unit + pad * 2}px; --pad:{pad}px; {lightVars}"
   >
-    <div class="plate" style="inset:{pad - 3}px"></div>
+    <!-- plate shows only under the keys: adjacent wells merge into clusters, the gaps between clusters are case -->
+    {#each def.keys.list.filter((k) => k.encoder === null) as k (k.row + "," + k.col + "," + k.x)}
+      <div class="plate" style="left:{pad + k.x * unit}px; top:{pad + k.y * unit}px; width:{k.w * unit}px; height:{k.h * unit}px; border-radius:{wellRadius.get(`${k.row},${k.col},${k.x}`)}"></div>
+    {/each}
+    {#each fillets as f}
+      <!-- the circle sits on the square's corner away from the inside corner, leaving a concave fill -->
+      <div
+        class="fillet"
+        style="left:{pad + f.x * unit}px; top:{pad + f.y * unit}px; width:{WELL_R * unit}px; height:{WELL_R * unit}px; --r:{WELL_R * unit}px; --at:{f.sx < 0 ? 0 : 100}% {f.sy < 0 ? 0 : 100}%"
+      ></div>
+    {/each}
+    <!-- status LEDs (Caps Lock etc.): definition's non-VIA "periph.indicators", [x, y] centers in key units -->
+    {#each def.periph?.indicators ?? [] as [x, y]}
+      <span class="ind" style="left:{pad + x * unit}px; top:{pad + y * unit}px"></span>
+    {/each}
     {#each def.keys.list as k, i (k.row + "," + k.col + "," + k.x)}
       {@const code = keymap?.[k.row]?.[k.col] ?? 0}
       {@const d = describe(code, def)}
@@ -247,7 +313,7 @@
         class:sel={selected === key}
         class:trans={code === 1}
         class:word-key={fx === "word" && i === wordKey}
-        style="left:{pad + k.x * unit}px; top:{pad + k.y * unit}px; width:{k.w * unit}px; height:{k.h * unit}px; {capLight(k, i)}"
+        style="left:{pad + k.x * unit}px; top:{pad + k.y * unit}px; width:{k.w * unit}px; height:{k.h * unit}px; --wr:{wellRadius.get(`${k.row},${k.col},${k.x}`) ?? "50%"}; {capLight(k, i)}"
         title={k.encoder !== null ? knobTitle(k.encoder, d) : d.long}
         aria-label={k.encoder !== null ? knobTitle(k.encoder, d) : d.long}
         onclick={() => {
@@ -260,19 +326,20 @@
         onpointerdown={duel ? undefined : () => hit(k)}
         onwheel={k.encoder !== null && !mini ? (ev) => wheel(ev, k.encoder) : undefined}
       >
-        {#if fx}<span class="led"></span>{/if}
+        {#if fx && k.encoder === null}<span class="led"></span>{/if}
         {#if k.encoder !== null}
           <span class="well"></span>
           <span class="knob" style="--turn:{turn[k.encoder] ?? 0}deg">
             <span class="knurl"></span>
-            <span class="top"><span class="notch"></span></span>
+            <span class="top"></span>
             {#if !mini}<span class="klbl" style="font-size:{fitKnob(d.short)}px">{d.short}</span>{/if}
           </span>
           {#if flash?.enc === k.encoder}<span class="flash">{flash.text}</span>{/if}
         {:else}
           <span class="skirt">
             <span class="top">
-              {#if !mini}<span class="lbl" style="font-size:{fit(d.short, k)}px">{d.short}</span>{/if}
+              {#if mini}{:else if code === 0x2c}<span class="space-bar"></span><!-- space: a centered bar, like the printed legend -->
+              {:else}<span class="lbl" style="font-size:{fit(d.short, k)}px">{d.short}</span>{/if}
             </span>
           </span>
         {/if}
@@ -287,26 +354,48 @@
 
   /* ---- case: white anodized shell with a visible front edge ---- */
   .case {
+    /* white finish; .black below swaps the palette */
+    --case-a: #fbfbf9; --case-b: #ecece8; --case-c: #d8d8d3; --case-d: #cfcfca; --case-e: #b9b9b4;
+    --hl: #fff; --face-hi: #fff;
+    --plate: #dcdcd7;
     border-radius: calc(var(--pad) * 0.9);
-    background: linear-gradient(180deg, #fbfbf9 0%, #ecece8 100%);
+    background: linear-gradient(180deg, var(--case-a) 0%, var(--case-b) 100%);
     box-shadow:
-      inset 0 1px 0 #fff,
-      inset 0 -1px 0 #d8d8d3,
-      0 calc(var(--u) * 0.16) 0 #cfcfca,
-      0 calc(var(--u) * 0.16 + 1px) 0 #b9b9b4,
+      inset 0 1px 0 var(--hl),
+      inset 0 -1px 0 var(--case-c),
+      0 calc(var(--u) * 0.16) 0 var(--case-d),
+      0 calc(var(--u) * 0.16 + 1px) 0 var(--case-e),
       0 calc(var(--u) * 0.5) calc(var(--u) * 0.9) calc(var(--u) * -0.2) rgb(0 0 0 / 0.55);
     transition: transform 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
-  .case.mini { box-shadow: inset 0 1px 0 #fff, 0 2px 0 #cfcfca, 0 6px 10px -4px rgb(0 0 0 / 0.5); border-radius: 4px; }
+  .case.mini { box-shadow: inset 0 1px 0 var(--hl), 0 2px 0 var(--case-d), 0 6px 10px -4px rgb(0 0 0 / 0.5); border-radius: 4px; }
+  /* each well overhangs its key a little so neighbours overlap (no notches where corners meet)
+     and a cluster's outer corners come out rounded */
   .plate {
     position: absolute;
-    border-radius: 6px;
-    background: #dcdcd7;
-    box-shadow: inset 0 2px 4px rgb(0 0 0 / 0.12);
+    margin: calc(var(--u) * -0.05); /* WELL_E */
+    padding: calc(var(--u) * 0.05);
+    box-sizing: content-box;
+    border-radius: calc(var(--u) * 0.12);
+    background: var(--plate);
+  }
+  .fillet {
+    position: absolute;
+    background: radial-gradient(circle var(--r) at var(--at), transparent calc(var(--r) - 0.5px), var(--plate) var(--r));
+  }
+
+  .ind {
+    position: absolute;
+    width: max(2px, calc(var(--u) * 0.08));
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: #fdfdfb;
+    box-shadow: 0 0 0 1px #c9c9c3, 0 0 calc(var(--u) * 0.08) rgb(255 255 255 / 0.9);
   }
 
   /* ---- keycaps ---- */
-  .cap { padding: calc(var(--u) * 0.045); outline: none; --cap: #fbfbf9; --side: #e2e2dd; --edge: #c8c8c2; --ink: #45453f; }
+  .cap { padding: calc(var(--u) * 0.06); outline: none; --cap: #fbfbf9; --side: #e2e2dd; --edge: #c8c8c2; --ink: #45453f; }
   .mod { --cap: #f3f3ef; --side: #dcdcd6; --edge: #c2c2bb; }
   .accent { --cap: #ebebe6; --side: #d4d4cd; --edge: #babab2; }
   .mini .cap { padding: 1px; }
@@ -332,20 +421,33 @@
     justify-content: flex-start;
     padding: calc(var(--u) * 0.07) calc(var(--u) * 0.07);
     border-radius: calc(var(--u) * 0.1);
-    background: radial-gradient(120% 90% at 50% 15%, #fff 0%, var(--cap) 55%, color-mix(in oklch, var(--cap) 92%, #b5b5ad) 100%);
-    box-shadow: inset 0 1px 0 #fff, 0 1px 1px rgb(0 0 0 / 0.08);
+    background: radial-gradient(120% 90% at 50% 15%, var(--face-hi) 0%, var(--cap) 55%, color-mix(in oklch, var(--cap) 92%, #b5b5ad) 100%);
+    box-shadow: inset 0 1px 0 var(--hl), 0 1px 1px rgb(0 0 0 / 0.08);
   }
   .mini .skirt { border-radius: 2px; }
   .mini .skirt > .top { top: 0; left: 1px; right: 1px; bottom: 1px; border-radius: 1.5px; padding: 0; }
 
   /* legends are translucent (shine-through): frosted grey when off, the LED color when lit */
+  .skirt > .top, .klbl { --legend: rgb(62 62 56 / 0.62); }
   .lbl, .klbl {
-    --legend: rgb(62 62 56 / 0.62);
     color: var(--legend);
     text-shadow: 0 1px 0 rgb(255 255 255 / 0.7);
   }
-  .lbl { font-weight: 650; line-height: 1; white-space: nowrap; letter-spacing: -0.01em; max-width: 100%; overflow: hidden; }
+  .lbl { font-weight: 650; line-height: 1; white-space: nowrap; letter-spacing: -0.01em; }
   .trans .lbl { opacity: 0.4; }
+  .space-bar {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: min(36%, calc(var(--u) * 1.6));
+    height: max(1.5px, calc(var(--u) * 0.045));
+    translate: -50% -50%;
+    border-radius: 99px;
+    background: var(--legend);
+    box-shadow: 0 1px 0 rgb(255 255 255 / 0.7);
+  }
+  .black .space-bar { box-shadow: 0 -1px 0 rgb(0 0 0 / 0.5); }
+  .sel .space-bar { background: color-mix(in oklch, var(--brand) 80%, #000); }
 
   .cap:hover .skirt { transform: translateY(-1.5px); box-shadow: 0 1px 0 var(--edge), 0 5px 8px rgb(0 0 0 / 0.2); }
   .cap:active .skirt { transform: translateY(1px); box-shadow: 0 0 0 var(--edge), 0 1px 1px rgb(0 0 0 / 0.2); }
@@ -361,14 +463,15 @@
     top: 50%;
     width: calc(var(--u) * 0.96);
     aspect-ratio: 1;
-    translate: -50% -58%;
+    translate: -50% -72%;
     border-radius: 50%;
-    /* stacked offsets = the knob's cylindrical side */
+    /* stacked offsets = the knob's cylindrical side; taller than the keycaps */
     box-shadow:
-      0 calc(var(--u) * 0.05) 0 #d9d9d3,
-      0 calc(var(--u) * 0.1) 0 #c4c4bd,
-      0 calc(var(--u) * 0.13) 0 #aaaaa3,
-      0 calc(var(--u) * 0.16) calc(var(--u) * 0.16) rgb(0 0 0 / 0.35);
+      0 calc(var(--u) * 0.06) 0 #dcdcd6,
+      0 calc(var(--u) * 0.12) 0 #d0d0ca,
+      0 calc(var(--u) * 0.18) 0 #c4c4bd,
+      0 calc(var(--u) * 0.23) 0 #aaaaa3,
+      0 calc(var(--u) * 0.27) calc(var(--u) * 0.2) rgb(0 0 0 / 0.35);
     transition: box-shadow 200ms ease, translate 120ms ease;
   }
   .well {
@@ -403,33 +506,17 @@
     position: absolute;
     inset: 0;
     border-radius: 50%;
-    background:
-      radial-gradient(circle, transparent 60%, rgb(0 0 0 / 0.1) 100%),
-      repeating-conic-gradient(#f4f4f0 0 4deg, #cfcfc9 4deg 8deg);
+    background: radial-gradient(circle, #f4f4f0 60%, #e2e2dc 100%); /* smooth, unknurled */
     rotate: var(--turn);
     transition: rotate 450ms cubic-bezier(0.3, 1.4, 0.4, 1);
   }
   .knob > .top {
     position: absolute;
-    inset: 13%;
+    inset: 0;
     border-radius: 50%;
-    background:
-      radial-gradient(circle at 50% 50%, transparent 0 62%, rgb(0 0 0 / 0.04) 63% 64%, transparent 65%),
-      radial-gradient(circle at 38% 30%, #ffffff 0%, #f1f1ed 45%, #dcdcd6 100%);
-    box-shadow: inset 0 1px 0 #fff, 0 0 0 1px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.25);
+    background: radial-gradient(circle at 38% 30%, #ffffff 0%, #f4f4f0 60%, #f0f0eb 100%);
     rotate: var(--turn);
     transition: rotate 450ms cubic-bezier(0.3, 1.4, 0.4, 1);
-  }
-  .notch {
-    position: absolute;
-    left: 50%;
-    top: 7%;
-    width: calc(var(--u) * 0.05);
-    height: 22%;
-    translate: -50% 0;
-    border-radius: 99px;
-    background: #8d8d86;
-    box-shadow: inset 0 1px 1px rgb(0 0 0 / 0.3);
   }
   .klbl {
     position: absolute;
@@ -441,7 +528,7 @@
     font-weight: 600;
     pointer-events: none;
   }
-  .cap.enc:active .knob { translate: -50% -52%; }
+  .cap.enc:active .knob { translate: -50% -66%; }
   .mini .knob { box-shadow: 0 1px 0 #b4b4ad; translate: -50% -50%; }
   .mini .well { display: none; }
 
@@ -456,17 +543,21 @@
   }
   .fx-duel .cap { --lc: var(--duel-color); }
   .fx-word .cap:not(.word-key) { --k: 0; }
+  /* the glow fills the key's plate well (key + WELL_E) and is clipped there, so it never spills
+     onto the raised case between clusters or around the edge */
   .led {
     position: absolute;
-    inset: calc(var(--u) * -0.02);
-    border-radius: calc(var(--u) * 0.18);
+    inset: calc(var(--u) * -0.05);
+    border-radius: var(--wr);
     background: var(--lc);
     filter: blur(calc(var(--u) * 0.14));
+    clip-path: inset(0 round var(--wr));
     opacity: var(--on);
     pointer-events: none;
   }
-  .enc .led { border-radius: 50%; inset: calc(var(--u) * -0.04); }
-  .lit .plate { background: #c9c9c3; box-shadow: inset 0 2px 6px rgb(0 0 0 / 0.25); }
+  /* the knob has no LED and stays plain in the lighting view */
+  .lit .klbl { display: none; }
+  .lit { --plate: #c9c9c3; }
   /* shine-through: translucent skirt and a faint wash on the top face */
   .lit .skirt {
     background: linear-gradient(180deg,
@@ -474,9 +565,20 @@
       color-mix(in oklch, var(--side) calc(100% - var(--on) * 75%), var(--lc)) 100%);
   }
   .lit .skirt > .top {
-    background: radial-gradient(120% 90% at 50% 15%, #fff 0%,
+    background: radial-gradient(120% 90% at 50% 15%, var(--face-hi) 0%,
       color-mix(in oklch, var(--cap) calc(100% - var(--on) * 5%), var(--lc)) 60%,
       color-mix(in oklch, var(--cap) calc(100% - var(--on) * 14%), var(--lc)) 100%);
+  }
+  /* solid (opaque) keycaps: the sides and face stay unlit; light only escapes between the keys
+     (the .led underglow) and through the legends */
+  .solid.lit .skirt { background: linear-gradient(180deg, var(--side) 0%, color-mix(in oklch, var(--side) 80%, #a9a9a2) 100%); }
+  .solid.lit .skirt > .top { background: radial-gradient(120% 90% at 50% 15%, var(--face-hi) 0%, var(--cap) 55%, color-mix(in oklch, var(--cap) 92%, #b5b5ad) 100%); }
+  .lit .space-bar {
+    --lg: var(--duel-color, hsl(var(--hue) var(--S) 50%));
+    background: color-mix(in oklch, var(--lg) calc(var(--on) * 92%), var(--legend));
+    box-shadow:
+      0 0 calc(var(--u) * 0.05) color-mix(in oklch, var(--lc) calc(var(--on) * 90%), transparent),
+      0 0 calc(var(--u) * 0.16) color-mix(in oklch, var(--lc) calc(var(--on) * 60%), transparent);
   }
   /* light passing through the legend: colored text + a soft bloom around it */
   .lit .lbl, .lit .klbl {
@@ -489,14 +591,14 @@
   }
   .case.lit {
     box-shadow:
-      inset 0 1px 0 #fff,
-      inset 0 -1px 0 #d8d8d3,
-      0 calc(var(--u) * 0.16) 0 #cfcfca,
-      0 calc(var(--u) * 0.16 + 1px) 0 #b9b9b4,
+      inset 0 1px 0 var(--hl),
+      inset 0 -1px 0 var(--case-c),
+      0 calc(var(--u) * 0.16) 0 var(--case-d),
+      0 calc(var(--u) * 0.16 + 1px) 0 var(--case-e),
       0 calc(var(--u) * 0.5) calc(var(--u) * 0.9) calc(var(--u) * -0.2) rgb(0 0 0 / 0.55),
       0 0 calc(var(--u) * 1.4) calc(var(--u) * -0.3) color-mix(in oklch, hsl(var(--H) 100% var(--L)) calc(var(--a) * 50%), transparent);
   }
-  .case.lit.rainbow, .case.lit.fx-heat, .case.lit.fx-duel, .case.lit.fx-word { box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 #d8d8d3, 0 calc(var(--u) * 0.16) 0 #cfcfca, 0 calc(var(--u) * 0.16 + 1px) 0 #b9b9b4, 0 calc(var(--u) * 0.5) calc(var(--u) * 0.9) calc(var(--u) * -0.2) rgb(0 0 0 / 0.55); }
+  .case.lit.rainbow, .case.lit.fx-heat, .case.lit.fx-duel, .case.lit.fx-word { box-shadow: inset 0 1px 0 var(--hl), inset 0 -1px 0 var(--case-c), 0 calc(var(--u) * 0.16) 0 var(--case-d), 0 calc(var(--u) * 0.16 + 1px) 0 var(--case-e), 0 calc(var(--u) * 0.5) calc(var(--u) * 0.9) calc(var(--u) * -0.2) rgb(0 0 0 / 0.55); }
 
   .rainbow .cap { animation: spin var(--dur) linear infinite; }
   .fx-breathe .cap { animation: breathe var(--dur) ease-in-out infinite; }
@@ -507,4 +609,30 @@
   @keyframes spin { from { --t: 0; } to { --t: 1; } }
   @keyframes breathe { 0%, 100% { --k: 0.08; } 50% { --k: 1; } }
   @keyframes drop { 0% { --k: 0.12; } 6% { --k: 1; } 40% { --k: 0.12; } 100% { --k: 0.12; } }
+
+  /* ---- black finish ---- */
+  .case.black {
+    --case-a: #2a2a2d; --case-b: #1d1d20; --case-c: #111113; --case-d: #0e0e10; --case-e: #050506;
+    --hl: rgb(255 255 255 / 0.1); --face-hi: #3a3a3e;
+    --plate: #111113;
+  }
+  .case.black.lit { --plate: #0b0b0c; }
+  .black .cap { --cap: #2b2b2e; --side: #1f1f22; --edge: #0b0b0c; --ink: #d9d9d4; }
+  .black .mod { --cap: #27272a; --side: #1b1b1e; --edge: #09090a; }
+  .black .accent { --cap: #232326; --side: #18181a; --edge: #070708; }
+  .black .skirt > .top, .black .klbl { --legend: rgb(226 226 220 / 0.62); }
+  .black .lbl, .black .klbl { text-shadow: 0 -1px 0 rgb(0 0 0 / 0.5); }
+  .black .ind { box-shadow: 0 0 0 1px #3a3a3e, 0 0 calc(var(--u) * 0.08) rgb(255 255 255 / 0.9); }
+  .black .well { background: #0e0e10; }
+  .black .knob {
+    box-shadow:
+      0 calc(var(--u) * 0.06) 0 #212124,
+      0 calc(var(--u) * 0.12) 0 #1a1a1d,
+      0 calc(var(--u) * 0.18) 0 #141416,
+      0 calc(var(--u) * 0.23) 0 #0a0a0b,
+      0 calc(var(--u) * 0.27) calc(var(--u) * 0.2) rgb(0 0 0 / 0.5);
+  }
+  .black .knurl { background: radial-gradient(circle, #2c2c2f 60%, #1f1f22 100%); }
+  .black .knob > .top { background: radial-gradient(circle at 38% 30%, #3c3c40 0%, #2c2c2f 60%, #28282b 100%); }
+  .black.mini .knob { box-shadow: 0 1px 0 #0a0a0b; }
 </style>

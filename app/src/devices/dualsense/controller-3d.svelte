@@ -54,6 +54,7 @@
   import { splitControlGeometry } from "./control-geometry.js";
   import { browserControls, controlAxis, controlForPiece, controlPressed, controlTrigger } from "./controller-input.js";
   import { DEMO } from "$lib/device-state.svelte.js";
+  import { isVisible, onVisible } from "$lib/visibility.js";
   import { t } from "$lib/i18n.svelte.js";
 
   /**
@@ -73,6 +74,8 @@
   /** Screen position of each anchor (px in host), updated every frame. */
   let screen = $state({});
   let triggerTravel = $state([0, 0]);
+  /** Per trigger [L2, R2]: mirroring the real paddle (else showing the effect example). */
+  let triggerLive = $state([false, false]);
   let api = null;
 
   /** Theme colour from a CSS variable (the theme uses oklch, which THREE.Color can't parse). */
@@ -191,7 +194,7 @@
   onMount(() => {
     if (!MODEL_URL) return;
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, compact ? 1.5 : 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
@@ -246,6 +249,9 @@
 
     const v3 = (a) => new THREE.Vector3(...a);
     const brand = cssColor("--brand", "#3291ff");
+    // Triggers: brand while mirroring the real paddle, amber while showing an effect example.
+    const exampleColor = cssColor("--warning", "#f5b83d");
+    const triggerTint = new THREE.Color();
 
     const lbColor = new THREE.Color();
     const lbBrightness = { value: 0 };
@@ -457,9 +463,23 @@
     }
 
     // ---- trigger press simulation (while a trigger is being edited) ----
-    // A finger presses the paddle over and over: resistance zones slow it down (a weapon
-    // effect gives way past its end), vibrating zones shake it, GameCube stops it half-way.
+    // A finger presses the paddle over and over to show the effect:
+    // - resistance (feedback, slope, multi-position, custom): the paddle slows in the strong
+    //   zones; GameCube stops half-way;
+    // - vibration (vibration, multi-position vibration, galloping, machine): it goes to the
+    //   vibrating zone and stays there a while, shaking with the effect's rhythm;
+    // - weapon / bow: it creeps up to the break point, holds under tension, then snaps through
+    //   to the bottom with a kick and a bounce.
     const RESIST = new Set(["feedback", "weapon", "slope", "multiFeedback", "bow", "custom"]);
+    const DWELL_S = 1.8; // time a vibration effect is held in its zone
+    const EXAMPLE_DELAY_S = 2.5; // after the real paddle is let go, before the example resumes
+    const TENSION_S = 0.4; // pause at a weapon's break point before it gives way
+    /** First and last zone (0..9) where the effect acts. */
+    function activeSpan(zones) {
+      const first = zones.findIndex((v) => v > 0);
+      if (first < 0) return null;
+      return [first, 9 - [...zones].reverse().findIndex((v) => v > 0)];
+    }
     function animateTrigger(tm, e, dt) {
       const sim = tm.userData.sim, hinge = tm.userData.hinge;
       if (!sim || !hinge) return;
@@ -473,42 +493,63 @@
       const zones = zonesOf(e) ?? Array(10).fill(e.kind === "custom" ? 6 : 0);
       const zone = Math.min(9, Math.floor(sim.pos * 10));
       const stop = e.kind === "gameCube" ? 0.45 : 1;
+      const buzz = BUZZ.has(e.kind);
       // weapon / bow: resistance that breaks at `end`, then the paddle fires to the bottom
       const breaks = e.kind === "weapon" || e.kind === "bow";
-      const breakAt = breaks ? Math.min(1, (e.end + 1) / 10) : 2;
+      const breakAt = breaks ? Math.min(0.97, (e.end + 1) / 10) : 2;
+      // vibration: the paddle settles in the middle of the zones that vibrate
+      const span = buzz ? activeSpan(zones) : null;
+      const dwellAt = span ? Math.min(0.95, (span[0] + span[1] + 1) / 20) : stop;
+
       if (sim.phase === "press") {
-        const r = RESIST.has(e.kind) ? zones[zone] : 0;
-        // creep harder through the last stretch before the break: builds the tension
-        const slow = breaks && sim.pos > breakAt - 0.12 && sim.pos < breakAt ? 2.2 : 1;
-        sim.pos = Math.min(stop, sim.pos + (dt * 1.3) / ((1 + r * 0.35) * slow));
-        if (breaks && sim.pos >= breakAt - 0.005 && sim.pos < stop) {
-          sim.phase = "fire";
-          tm.userData.kick = 1; // brief accent burst on the break
+        if (buzz) {
+          sim.pos = Math.min(dwellAt, sim.pos + dt * 1.6);
+          if (sim.pos >= dwellAt) ((sim.phase = "dwell"), (sim.t = DWELL_S));
+        } else {
+          const r = RESIST.has(e.kind) ? zones[zone] : 0;
+          // creep harder through the last stretch before the break: builds the tension
+          const slow = breaks && sim.pos > breakAt - 0.15 ? 2.6 : 1;
+          const limit = breaks ? breakAt : stop;
+          sim.pos = Math.min(limit, sim.pos + (dt * 1.2) / ((1 + r * 0.35) * slow));
+          if (breaks && sim.pos >= breakAt) ((sim.phase = "tension"), (sim.t = TENSION_S));
+          else if (sim.pos >= stop) ((sim.phase = "hold"), (sim.t = 0.35));
         }
-        if (sim.pos >= stop) ((sim.phase = "hold"), (sim.t = 0.35));
+      } else if (sim.phase === "dwell" || sim.phase === "tension") {
+        if ((sim.t -= dt) <= 0) {
+          if (sim.phase === "dwell") ((sim.phase = "release"), (sim.t = 0));
+          else {
+            sim.phase = "fire";
+            tm.userData.kick = 1; // accent burst as it gives way
+          }
+        }
       } else if (sim.phase === "fire") {
-        sim.pos = Math.min(stop, sim.pos + dt * 9); // snaps through in a few frames
-        if (sim.pos >= stop) ((sim.phase = "hold"), (sim.t = 0.55), (sim.bounce = 1));
+        sim.pos = Math.min(stop, sim.pos + dt * 12); // snaps through in a few frames
+        if (sim.pos >= stop) ((sim.phase = "hold"), (sim.t = 0.6), (sim.bounce = 1));
       } else if (sim.phase === "release") {
         sim.pos = Math.max(0, sim.pos - dt * 2.4);
         if (sim.pos <= 0) ((sim.phase = "rest"), (sim.t = 0.45));
       } else if ((sim.t -= dt) <= 0) {
         sim.phase = sim.phase === "hold" ? "release" : "press";
       }
+
       let shake = 0;
-      if (BUZZ.has(e.kind) && zones[zone] > 0 && sim.phase !== "rest") {
+      const here = zones[Math.min(9, Math.floor(sim.pos * 10))];
+      if (buzz && here > 0 && sim.phase !== "rest") {
+        // full strength while held in the zone, a hint on the way in and out
+        const k = sim.phase === "dwell" ? 1 : 0.35;
         const f = 18 + (e.frequency ?? 6) * 3;
-        const a = (zones[zone] / 8) * 0.06;
+        const a = (here / 8) * 0.07 * k;
         shake = e.kind === "galloping"
-          ? a * Math.max(0, Math.sin(time * 9)) ** 6 * Math.sin(time * f) * 2 // hoof beats
+          ? a * Math.max(0, Math.sin(time * 9)) ** 6 * Math.sin(time * f) * 2.2 // hoof beats
           : e.kind === "machine"
             ? a * (Math.sin(time * 4) > 0 ? 1 : 0.4) * Math.sin(time * f)
             : a * Math.sin(time * f);
       }
-      // tension tremble right before the break, then a hard bounce at the bottom
-      if (breaks && sim.phase === "press" && sim.pos > breakAt - 0.12) shake += 0.012 * Math.sin(time * 70);
+      // trembling under tension at the break point, then a hard bounce at the bottom
+      if (sim.phase === "tension") shake += 0.014 * Math.sin(time * 70);
+      else if (breaks && sim.phase === "press" && sim.pos > breakAt - 0.15) shake += 0.006 * Math.sin(time * 60);
       if (sim.bounce > 0.01) {
-        shake -= sim.bounce * 0.1 * Math.cos((0.55 - sim.t) * 38);
+        shake -= sim.bounce * 0.1 * Math.cos((0.6 - sim.t) * 38);
         sim.bounce *= Math.exp(-dt * 7);
       }
       hinge.rotation.x = HINGE.dir * (sim.pos * HINGE.travel + shake);
@@ -564,6 +605,7 @@
         loaded.ghost.group.name = id;
         previews.set(id, loaded);
         world.add(loaded.ghost.group);
+        wake();
       }).catch(() => {
         if (!gone) failedPreviews[id] = true;
       }).finally(() => loadingPreviews.delete(id));
@@ -636,6 +678,7 @@
         applyStyle(state.model);
         ready = true;
         renderer.domElement.style.opacity = "1";
+        wake();
       },
       () => (failed = true),
     );
@@ -647,26 +690,73 @@
       camera.updateProjectionMatrix();
       aim(goal.shot, goal.k, compact || !ready);
     };
-    const ro = new ResizeObserver(resize);
+    const ro = new ResizeObserver(() => {
+      resize();
+      wake();
+    });
     ro.observe(host);
     resize();
 
     let visible = true;
-    const io = new IntersectionObserver(([e]) => (visible = e.isIntersecting));
+    const io = new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      if (visible) wake();
+    });
     io.observe(host);
+    const offVisible = onVisible(() => wake());
 
     // ---- live state (pushed by the $effects below) ----
     let state = { cfg: null, lights: null, focus: "overview", virtual: false, preview: null, labels: [], model: "white" };
     let liveControls = null;
     const tmp = new THREE.Color(), proj = new THREE.Vector3();
 
-    let raf, time = 0, last = performance.now();
+    // ---- frame loop, on demand ----
+    // Frames are drawn only while something can move. Motion (camera flights, sweeps, pulses,
+    // presses) gets the display rate for QUIET_MS, which they all settle well within. Light
+    // changes alone (a breathing lightbar streams them) only need a capped rate. Endless
+    // animations (effect previews) keep the loop going. Otherwise it stops until wake().
+    const QUIET_MS = 2500, LIGHTS_MS = 700;
+    const LIGHT_FPS = compact ? 15 : 30;
+    let raf = 0, time = 0, last = 0, lastDraw = 0, motionUntil = 0, lightsUntil = 0;
+    /** `motion`: false when only the lights changed. */
+    function wake(motion = true) {
+      const now = performance.now();
+      if (motion) motionUntil = now + QUIET_MS;
+      else lightsUntil = now + LIGHTS_MS;
+      if (!raf && !gone) {
+        last = now;
+        lastDraw = 0; // the first frame after a wake is drawn at once
+        raf = requestAnimationFrame(tick);
+      }
+    }
+    /** Frame rate an endless animation needs right now (0: none, Infinity: the display's). */
+    function continuous() {
+      if (DEMO && !compact) return Infinity; // keyboard / gamepad stand-in, polled per frame
+      const c = state.cfg;
+      if (!compact) {
+        const f = state.focus;
+        if ((f === "triggers" || f === "l2") && c?.leftTrigger?.effect) return Infinity; // press simulation
+        if ((f === "triggers" || f === "r2") && c?.rightTrigger?.effect) return Infinity;
+      }
+      if (!state.lights) {
+        // previews of the config (no pad): the real pad's lights arrive as status changes
+        if (["breathing", "strobe", "rainbow"].includes(c?.lightbar?.mode)) return LIGHT_FPS;
+        if (c?.micLed?.mode === "blink") return LIGHT_FPS;
+      }
+      return 0;
+    }
+
     const tick = (now = performance.now()) => {
+      raf = 0;
+      if (gone || !visible || !isVisible()) return; // resumed by the observers
+      const fps = now < motionUntil ? Infinity : Math.max(continuous(), now < lightsUntil ? LIGHT_FPS : 0);
+      if (!fps) return;
       raf = requestAnimationFrame(tick);
+      if (now - lastDraw < 1000 / fps - 4) return;
+      lastDraw = now;
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       time += dt;
-      if (!visible || document.hidden) return;
       const c = state.cfg;
       const input = compact ? null : liveControls ?? (DEMO ? browserControls() : null);
       animateControls(input, dt, time);
@@ -722,39 +812,52 @@
         tm.material.emissive.copy(tint).multiplyScalar(k * (micOn ? 0.9 : 0.5));
       }
 
-      // Live input moves each paddle independently. With no input source, the effect preview
-      // can simulate a pull, mirroring R2 on L2 when the effects are linked.
+      // A paddle the user presses mirrors the real one, and keeps doing so for EXAMPLE_DELAY_S
+      // after it is let go (so it rests instead of jumping straight into a demo); otherwise the effect being edited is shown by a simulated finger, R2's copied to
+      // L2 when the effects are linked.
       const linked = state.focus === "triggers";
-      if (linked || state.focus === "l2" || state.focus === "r2") {
-        const left = Math.round((input?.triggers?.[0] ?? 0) * 100 / 255);
-        const right = Math.round((input?.triggers?.[1] ?? 0) * 100 / 255);
-        if (left !== triggerTravel[0] || right !== triggerTravel[1]) triggerTravel = [left, right];
-      }
       for (const [p, section] of [["r2", "rightTrigger"], ["l2", "leftTrigger"]]) {
         const tm = trig[p];
         if (!tm) continue;
+        const ud = tm.userData;
         const e = c?.[section]?.effect;
         const travel = controlTrigger(input, p);
         const press = parts.get(p).press;
+        if (travel > 0.03) ud.liveUntil = time + EXAMPLE_DELAY_S;
+        const live = time < (ud.liveUntil ?? -1);
+        ud.live = THREE.MathUtils.damp(ud.live ?? 0, live ? 1 : 0, 10, dt);
         press.value = THREE.MathUtils.damp(press.value, travel, travel > press.value ? 75 : 28, dt);
         const target = !compact && lit(p) ? 1 : 0;
-        tm.userData.k = THREE.MathUtils.damp(tm.userData.k, target, 9, dt);
+        ud.k = THREE.MathUtils.damp(ud.k, target, 9, dt);
         const lead = trig.r2;
-        if (input) {
-          tm.userData.hinge.rotation.x = HINGE.dir * HINGE.travel * press.value;
-          Object.assign(tm.userData.sim, { pos: press.value, phase: "rest", t: 0.3, bounce: 0 });
-          tm.userData.kick = 0;
-        } else if (linked && p === "l2" && lead?.userData.hinge && tm.userData.hinge) {
-          Object.assign(tm.userData.sim, lead.userData.sim);
-          tm.userData.hinge.rotation.x = lead.userData.hinge.rotation.x;
-          tm.userData.kick = lead.userData.kick;
+        if (live) {
+          ud.hinge.rotation.x = HINGE.dir * HINGE.travel * press.value;
+          // the example resumes from here once the paddle is let go
+          Object.assign(ud.sim, { pos: press.value, phase: "release", t: 0, bounce: 0 });
+          ud.kick = 0;
+        } else if (linked && p === "l2" && lead?.userData.hinge && ud.hinge && !lead.userData.live) {
+          Object.assign(ud.sim, lead.userData.sim);
+          ud.hinge.rotation.x = lead.userData.hinge.rotation.x;
+          ud.kick = lead.userData.kick;
         } else {
           animateTrigger(tm, lit(p) && !compact ? e : null, dt);
-          tm.userData.kick = Math.max(0, (tm.userData.kick ?? 0) - dt / 0.35);
+          ud.kick = Math.max(0, (ud.kick ?? 0) - dt / 0.35);
         }
-        const accent = 0.08 * tm.userData.k + 0.11 * press.value + 0.2 * flash[p];
-        tm.material.color.copy(white).lerp(brand, accent);
-        tm.material.emissive.copy(brand).multiplyScalar(accent + tm.userData.kick * 0.9);
+        triggerTint.copy(exampleColor).lerp(brand, ud.live);
+        const shown = live ? press.value : ud.sim.pos;
+        const accent = 0.08 * ud.k + 0.11 * shown * (live ? 1 : ud.k) + 0.2 * flash[p];
+        tm.material.color.copy(white).lerp(triggerTint, accent);
+        tm.material.emissive.copy(triggerTint).multiplyScalar(accent + ud.kick * 0.9);
+      }
+      if (!compact && (linked || state.focus === "l2" || state.focus === "r2")) {
+        const read = (p) => {
+          const ud = trig[p]?.userData;
+          const live = !!ud && time < (ud.liveUntil ?? -1);
+          return [Math.round(100 * (live ? parts.get(p).press.value : ud?.sim?.pos ?? 0)), live];
+        };
+        const [[left, leftLive], [right, rightLive]] = [read("l2"), read("r2")];
+        if (left !== triggerTravel[0] || right !== triggerTravel[1]) triggerTravel = [left, right];
+        if (leftLive !== triggerLive[0] || rightLive !== triggerLive[1]) triggerLive = [leftLive, rightLive];
       }
 
       // sweep: the edge runs triggers -> grips as the controller materializes (and back)
@@ -826,22 +929,34 @@
         if (!same) screen = next;
       }
     };
-    tick();
+    wake();
 
+    // Status events arrive with fresh objects even when only a counter changed: wake the loop
+    // only for a change the view can show.
+    let shownState = "", shownLights = "", shownControls = "";
     api = {
       setControls(input) {
         liveControls = input;
+        const key = JSON.stringify(input);
+        if (key !== shownControls) ((shownControls = key), wake());
       },
       set(s) {
         if (s.preview !== state.preview) loadPreview(s.preview);
         state = s;
         if (ready && s.model !== style) applyStyle(s.model);
+        const key = JSON.stringify({ ...s, lights: null }), lights = JSON.stringify(s.lights);
+        if (key !== shownState) wake();
+        else if (lights !== shownLights) wake(false);
+        shownState = key;
+        shownLights = lights;
       },
       aim(f, z) {
         aim(SHOTS[f] ?? SHOTS.overview, z, false);
+        wake();
       },
       pulse(part) {
         if (part in flash && !compact) flash[part] = 1;
+        wake();
       },
     };
     if (import.meta.env.DEV && !compact) window.__ds3d = { THREE, camera, scene, pivot, goal, cam, holo: () => holoK, aim: (s) => aim(s, 1, true) };
@@ -851,6 +966,7 @@
       cancelAnimationFrame(raf);
       ro.disconnect();
       io.disconnect();
+      offVisible();
       pmrem.dispose();
       for (const loaded of previews.values()) disposeGhostPreview(loaded);
       ledTex.dispose();
@@ -915,13 +1031,14 @@
     {#if triggerView}
       <div class="absolute inset-x-3 bottom-7 grid grid-cols-2 gap-2">
         {#each REAR_TRIGGERS as [side, i] (side)}
-          <div class="bg-background/75 rounded-md border px-2.5 py-2 backdrop-blur">
+          {@const live = triggerLive[i]}
+          <div class="bg-background/75 rounded-md border px-2.5 py-2 backdrop-blur transition-colors duration-300 {live ? 'border-brand/50' : 'border-warning/40'}">
             <div class="mb-1.5 flex justify-between gap-2 text-xs">
               <span class="font-medium">{t(`dualsense.triggers.${side}`)}</span>
               <span class="text-muted-foreground tabular-nums">{triggerTravel[i]}%</span>
             </div>
             <div class="bg-muted h-1 overflow-hidden rounded-full">
-              <div class="bg-brand h-full rounded-full" style:width="{triggerTravel[i]}%"></div>
+              <div class="h-full rounded-full transition-colors duration-300 {live ? 'bg-brand' : 'bg-warning'}" style:width="{triggerTravel[i]}%"></div>
             </div>
           </div>
         {/each}

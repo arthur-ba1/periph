@@ -9,7 +9,9 @@
     "searching": "Looking for a VIA keyboard",
     "text": "Connect the keyboard with the USB cable. If the VIA website (usevia.app) is open, close the tab, since both can't use the keyboard at the same time."
   },
-  "card": { "online": "Online", "searching": "Searching", "layers": "VIA v{protocol} · {layers} layers" },
+  "card": { "caps": "Keycaps", "color": "Keyboard color", "online": "Online", "searching": "Searching", "layers": "VIA v{protocol} · {layers} layers" },
+  "caps": { "pudding": "Pudding (translucent sides)", "solid": "Solid (shine-through legends)" },
+  "colors": { "white": "White", "black": "Black" },
   "badges": { "layers": "{n} layers" },
   "keymap": {
     "title": "Keymap",

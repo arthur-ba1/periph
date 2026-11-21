@@ -3,6 +3,7 @@
   // empty slot (page-layout.svelte, ui.slot) and this layer sits over it, so a tab switch
   // keeps the same controller on screen and only the camera moves to the new page's part.
   import { onMount } from "svelte";
+  import { followLayout } from "$lib/follow-layout.js";
   import ControllerStage from "./controller-stage.svelte";
   import { ui } from "./store.svelte.js";
 
@@ -31,15 +32,20 @@
     if (n.left !== rect.left || n.top !== rect.top || n.width !== rect.width || n.height !== rect.height) rect = n;
   }
 
-  // Follow layout every frame (resize, scroll, page switch); writes only on change.
+  // Follow layout on resize, scroll and page switches (a burst of frames covers the fly-in);
+  // writes only on change.
+  let follow = null;
   onMount(() => {
-    let raf;
-    const tick = () => {
-      measure();
-      raf = requestAnimationFrame(tick);
+    follow = followLayout(measure, { scroller: mainEl });
+    return () => {
+      follow.destroy();
+      follow = null;
     };
-    tick();
-    return () => cancelAnimationFrame(raf);
+  });
+  $effect(() => {
+    const slot = ui.slot;
+    follow?.observe([shellEl, mainEl, slot, mainEl?.firstElementChild]);
+    follow?.burst();
   });
 </script>
 

@@ -16,6 +16,9 @@ For a new VIA keyboard, drop its JSON definition into `app/src/devices/via/keybo
 repository only ships an example definition; check the license before committing another one).
 
 ## Adding a device
+- Your own device, without rebuilding Periph: a device package (JSON files, no code), see
+  [docs/device-packages.md](docs/device-packages.md). The release kit (Releases page) has `Periph.exe`,
+  the `periph-pack.exe` toolbox and the `add-device` skill, so an AI agent can write the package with you.
 - Guide: [docs/adding-a-device.md](docs/adding-a-device.md) (driver and module contract)
 - Reverse-engineering method: [docs/reverse-engineering.md](docs/reverse-engineering.md)
 - For AI agents (Claude Code, Codex, ...): the skill at

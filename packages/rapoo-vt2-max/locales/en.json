@@ -1,0 +1,38 @@
+{
+  "pages": { "dpi": "DPI", "performance": "Performance", "sensor": "Sensor", "buttons": "Buttons" },
+  "settings": {
+    "dpi": { "label": "DPI stages", "description": "The stages the DPI± buttons cycle through, from 50 to 26,000 in steps of 10.", "item": "Stage {n}" },
+    "stageCount": { "label": "Stages in use" },
+    "active": { "label": "Active stage" },
+    "polling": {
+      "label": "Polling rate",
+      "description": "Rates above 1 kHz need the high-speed dongle.",
+      "options": { "125": "125 Hz", "250": "250 Hz", "500": "500 Hz", "1000": "1 kHz", "2000": "2 kHz", "4000": "4 kHz", "8000": "8 kHz" }
+    },
+    "motionSync": { "label": "Motion Sync", "description": "Syncs sensor reads with polling. Smoother movement, about 1 ms more delay." },
+    "linear": { "label": "Linear correction", "description": "Angle snapping: straightens strokes that should be straight." },
+    "ripple": { "label": "Ripple control", "description": "Smooths sensor noise at high DPI." },
+    "glass": { "label": "Glass mode", "description": "Improves tracking on glass. Turn it off on regular mouse pads." },
+    "lod": { "label": "Lift-off distance" },
+    "debounce": { "label": "Press debounce", "description": "How long the mouse waits to confirm a click." },
+    "debounceRelease": { "label": "Release debounce" },
+    "angle": { "label": "Sensor angle" },
+    "buttons": {
+      "label": "Buttons",
+      "description": "Scrolling uses a function code that hasn't been decoded yet, so it can't be changed.",
+      "items": ["Left", "Middle", "Right", "DPI +", "DPI −", "Forward", "Back", "Wheel up", "Wheel down", "DIY (underside)"]
+    }
+  },
+  "codecs": {
+    "action": {
+      "mouse": "Mouse button",
+      "key": "Keyboard key",
+      "dpiUp": "DPI +",
+      "dpiDown": "DPI −",
+      "wheel": "Scroll",
+      "disabled": "Disabled",
+      "values": { "mouse": { "1": "Left click", "2": "Right click", "4": "Middle click", "8": "Back", "16": "Forward" } }
+    }
+  },
+  "tray": { "header": "VT2 Max · {battery}% · {dpi} DPI", "dpi": "DPI" }
+}

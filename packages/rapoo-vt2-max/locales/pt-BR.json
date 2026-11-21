@@ -1,0 +1,38 @@
+{
+  "pages": { "dpi": "DPI", "performance": "Desempenho", "sensor": "Sensor", "buttons": "Botões" },
+  "settings": {
+    "dpi": { "label": "Estágios de DPI", "description": "Os estágios que os botões DPI± percorrem, de 50 a 26.000 em passos de 10.", "item": "Estágio {n}" },
+    "stageCount": { "label": "Estágios em uso" },
+    "active": { "label": "Estágio ativo" },
+    "polling": {
+      "label": "Taxa de atualização",
+      "description": "Taxas acima de 1 kHz exigem o dongle de alta velocidade.",
+      "options": { "125": "125 Hz", "250": "250 Hz", "500": "500 Hz", "1000": "1 kHz", "2000": "2 kHz", "4000": "4 kHz", "8000": "8 kHz" }
+    },
+    "motionSync": { "label": "Motion Sync", "description": "Sincroniza a leitura do sensor com o polling. Movimento mais suave, cerca de 1 ms a mais de atraso." },
+    "linear": { "label": "Correção linear", "description": "Angle snapping: endireita traços que deveriam ser retos." },
+    "ripple": { "label": "Controle de ripple", "description": "Suaviza o ruído do sensor em DPI alto." },
+    "glass": { "label": "Modo vidro", "description": "Melhora o rastreio em vidro. Desligue em mousepads comuns." },
+    "lod": { "label": "Distância de levantamento" },
+    "debounce": { "label": "Debounce ao pressionar", "description": "Quanto tempo o mouse espera para confirmar um clique." },
+    "debounceRelease": { "label": "Debounce ao soltar" },
+    "angle": { "label": "Ângulo do sensor" },
+    "buttons": {
+      "label": "Botões",
+      "description": "A rolagem usa um código de função que ainda não foi decodificado, então não pode ser alterada.",
+      "items": ["Esquerdo", "Meio", "Direito", "DPI +", "DPI −", "Avançar", "Voltar", "Roda para cima", "Roda para baixo", "DIY (embaixo)"]
+    }
+  },
+  "codecs": {
+    "action": {
+      "mouse": "Botão do mouse",
+      "key": "Tecla do teclado",
+      "dpiUp": "DPI +",
+      "dpiDown": "DPI −",
+      "wheel": "Rolagem",
+      "disabled": "Desativado",
+      "values": { "mouse": { "1": "Clique esquerdo", "2": "Clique direito", "4": "Clique do meio", "8": "Voltar", "16": "Avançar" } }
+    }
+  },
+  "tray": { "header": "VT2 Max · {battery}% · {dpi} DPI", "dpi": "DPI" }
+}

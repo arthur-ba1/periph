@@ -49,6 +49,29 @@
     "connected": "Conectado",
     "openDevice": "Abrir no Periph"
   },
+  "packages": {
+    "refresh": "Ler de novo do dispositivo",
+    "errors": {
+      "notFound": "{name} não encontrado",
+      "noAnswer": "O dispositivo não respondeu (dormindo ou fora de alcance)",
+      "busy": "O dispositivo está ocupado",
+      "badResponse": "Resposta inesperada do dispositivo",
+      "notReadable": "Endereço fora da faixa de leitura do pacote:",
+      "unknownSetting": "Configuração desconhecida \"{id}\"",
+      "readOnly": "\"{id}\" não pode ser alterado",
+      "invalidValue": "Valor inválido para \"{id}\""
+    },
+    "ui": {
+      "item": "Item {n}",
+      "unknown": "Desconhecido",
+      "locked": "Decodificado, mas nunca visto sendo gravado pelo software oficial, então não pode ser alterado aqui.",
+      "battery": "Bateria",
+      "package": "Pacote de dispositivo · v{version}",
+      "failed": "O pacote de dispositivo \"{name}\" não foi carregado",
+      "asleepTitle": "O dispositivo está dormindo",
+      "asleepText": "O receptor está conectado, mas o dispositivo não respondeu. Mexa ou clique nele para acordá-lo; o Periph tenta de novo sozinho."
+    }
+  },
   "errors": {
     "invalidCommand": "comando inválido"
   }

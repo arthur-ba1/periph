@@ -16,6 +16,9 @@ Para um teclado VIA novo basta colocar a definição JSON em `app/src/devices/vi
 (o repositório traz só uma definição de exemplo; confira a licença antes de commitar a de outro teclado).
 
 ## Adicionar um dispositivo
+- O seu próprio dispositivo, sem recompilar o Periph: um pacote de dispositivo (arquivos JSON, sem código),
+  veja [docs/device-packages.md](docs/device-packages.md) (em inglês). O kit de release (página Releases) traz o
+  `Periph.exe`, a caixa de ferramentas `periph-pack.exe` e a skill `add-device`, para um agente de IA escrever o pacote com você.
 - Guia: [docs/adding-a-device.md](docs/adding-a-device.md) (contrato do driver e do módulo)
 - Método de engenharia reversa: [docs/reverse-engineering.md](docs/reverse-engineering.md)
 - Para agentes de IA (Claude Code, Codex, etc.): skill em

@@ -7,6 +7,7 @@
 <script>
   import { onMount } from "svelte";
   import { t } from "$lib/i18n.svelte.js";
+  import { isVisible, onVisible } from "$lib/visibility.js";
   import * as THREE from "three";
   import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
   import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -111,6 +112,7 @@
         });
         pivot.add(gltf.scene);
         ready = true;
+        wake();
       },
       undefined,
       () => (failed = true),
@@ -122,20 +124,41 @@
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     };
-    const ro = new ResizeObserver(resize);
+    const ro = new ResizeObserver(() => {
+      resize();
+      wake();
+    });
     ro.observe(host);
     resize();
 
     let visible = true;
-    const io = new IntersectionObserver(([e]) => (visible = e.isIntersecting));
+    const io = new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting;
+      if (visible) wake();
+    });
     io.observe(host);
+    const offVisible = onVisible(() => wake());
 
+    // Frames only while something moves: the turntable, the intro, a drag (and its damping) or
+    // a colour fade. Otherwise the loop stops until wake().
+    const QUIET_MS = 2000;
     const clock = new THREE.Clock();
-    let raf;
-    const tick = () => {
+    let raf = 0, activeUntil = 0, gone = false;
+    function wake() {
+      activeUntil = performance.now() + QUIET_MS;
+      if (!raf && !gone) {
+        clock.getDelta();
+        raf = requestAnimationFrame(tick);
+      }
+    }
+    controls.addEventListener("change", wake);
+    controls.addEventListener("start", wake);
+    const tick = (now = performance.now()) => {
+      raf = 0;
+      if (gone || !visible || !isVisible()) return;
+      if (!controls.autoRotate && now >= activeUntil) return;
       raf = requestAnimationFrame(tick);
       const dt = Math.min(clock.getDelta(), 0.05);
-      if (!visible || document.hidden) return;
       if (ready && introT < 1) {
         introT = Math.min(1, introT + dt / 1.3);
         const e = 1 - Math.pow(1 - introT, 4);
@@ -147,16 +170,18 @@
       controls.update();
       renderer.render(scene, camera);
     };
-    tick();
+    wake();
 
     api = {
-      setColor: (hex) => target.copy(paint(hex)),
-      setAuto: (on) => (controls.autoRotate = on),
+      setColor: (hex) => (target.copy(paint(hex)), wake()),
+      setAuto: (on) => ((controls.autoRotate = on), wake()),
       setInteractive: (on) => (controls.enabled = on),
     };
 
     return () => {
+      gone = true;
       cancelAnimationFrame(raf);
+      offVisible();
       ro.disconnect();
       io.disconnect();
       controls.dispose();

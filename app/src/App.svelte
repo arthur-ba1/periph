@@ -15,6 +15,9 @@
   import Icon from "$lib/icons/Icon.svelte";
   import { MODULES, devices, displayName, initDevices, send } from "$lib/devices.svelte.js";
   import { t, i18n, LANGUAGES, setLocale } from "$lib/i18n.svelte.js";
+  import { setWindowShown } from "$lib/visibility.js";
+  import { failedPackages } from "$lib/packages.js";
+  import { toast } from "svelte-sonner";
 
   // which device is being configured (persisted; "mouse"/"keyboard" are pre-registry ids)
   const LEGACY = { mouse: "vt2", keyboard: "via" };
@@ -40,13 +43,25 @@
   onMount(() => {
     document.documentElement.classList.add("dark");
     initDevices();
+    // device packages that could not be loaded stay on screen until dismissed
+    for (const f of failedPackages) {
+      const name = f.dir.split(/[\\/]/).pop();
+      toast.error(t("packages.ui.failed", { name }), { description: f.error, duration: Number.POSITIVE_INFINITY, closeButton: true });
+    }
     try { win = getCurrentWindow(); } catch {}
     // double click on a device's tray icon (or picking it in the tray flyout)
     if (!window.__TAURI_INTERNALS__) return;
     const unlisten = listen("open-device", ({ payload }) => {
       if (MODULES.some((m) => m.id === payload)) deviceId = payload;
     });
-    return () => unlisten.then((off) => off());
+    // hidden to the tray or minimized: animation loops stop (lib/visibility.js)
+    let told = false;
+    const unlistenShown = listen("window-visible", ({ payload }) => ((told = true), setWindowShown(!!payload)));
+    // started with --tray: hidden until the backend says otherwise
+    Promise.all([win?.isVisible(), win?.isMinimized()])
+      .then(([shown, min]) => told || setWindowShown(shown !== false && !min))
+      .catch(() => {});
+    return () => [unlisten, unlistenShown].forEach((u) => u.then((off) => off()));
   });
 
   let shellEl = $state();
@@ -122,7 +137,7 @@
     </header>
 
     <!-- sidebar -->
-    <aside class="bg-sidebar/85 border-sidebar-border relative z-10 flex backdrop-blur-md flex-col justify-between border-r p-3">
+    <aside class="bg-sidebar/85 border-sidebar-border relative z-10 flex flex-col justify-between border-r p-3">
       <nav class="relative flex flex-col gap-0.5">
         <div
           class="bg-sidebar-accent absolute inset-x-0 top-0 h-9 rounded-md transition-transform duration-300 ease-(--ease-out-expo)"
@@ -140,7 +155,7 @@
       </nav>
 
       {#if mod?.Card}
-        <mod.Card />
+        <mod.Card {...mod.cardProps ?? {}} />
       {:else if mod}
         <div class="border-sidebar-border bg-card flex items-center gap-3 rounded-lg border p-3">
           <Icon name={mod.icon} size={22} class="text-muted-foreground" />
@@ -157,7 +172,7 @@
       {#if ready && Page}
         {#key deviceId + ":" + tab}
           <div class="mx-auto max-w-4xl px-8 py-7" in:fly={{ y: 8, duration: 280, easing: expoOut }}>
-            <Page />
+            <Page {...tabs[tab]?.props ?? {}} />
           </div>
         {/key}
       {:else if mod}

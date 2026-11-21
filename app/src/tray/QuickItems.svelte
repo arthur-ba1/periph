@@ -1,8 +1,11 @@
 <script>
   // A device's quick settings (the driver's `Tray` items): a Check is a switch, a Submenu of
   // Checks a choice group (Separators in it split the row into groups), Colors a row of
-  // swatches, an Action a button. Used by the flyout and by the right-click menu.
+  // swatches, a Slider a range, an Action a button. Long choice groups start folded to the
+  // chosen option. Used by the flyout and by the right-click menu.
   import { Switch } from "$lib/components/ui/switch/index.js";
+  import { Slider } from "$lib/components/ui/slider/index.js";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import { command } from "./api.js";
 
   /** `width`: inner width in px, to size the choice groups. */
@@ -38,6 +41,7 @@
   // Optimistic: reflect the click now, the backend's next payload confirms it.
   function choose(group, option) {
     for (const o of optionsOf(group)) o.checked = o === option;
+    open[group.label] = false; // a long list folds back once something is picked
     command(device.id, option.id);
   }
   function pickColor(group, option) {
@@ -45,6 +49,17 @@
     command(device.id, option.id);
   }
   const rgb = (c) => `rgb(${c.join(",")})`;
+
+  // choice groups with more options than this start folded: one row showing the current choice
+  const FOLD = 6;
+  let open = $state({}); // label -> unfolded
+  // slider drafts while dragging; the command goes out on release
+  let drafts = $state({});
+  function slide(entry, v) {
+    delete drafts[entry.id];
+    entry.value = v;
+    command(device.id, `${entry.id}:${v}`);
+  }
   function toggle(item) {
     item.checked = !item.checked;
     command(device.id, item.id);
@@ -71,9 +86,22 @@
     {@const options = optionsOf(entry)}
     {@const groups = groupsOf(entry)}
     {@const fit = layout(options)}
+    {@const folded = options.length > FOLD && !open[entry.label]}
     <section class="flex flex-col gap-1.5">
-      <span class={title}>{entry.label}</span>
-      {#if groups.length > 1 && fit.rows === 1}
+      {#if options.length > FOLD}
+        <button class="flex items-center justify-between text-left" aria-expanded={!folded} onclick={() => (open[entry.label] = !open[entry.label])}>
+          <span class={title}>{entry.label}</span>
+          <span class="text-muted-foreground flex min-w-0 items-center gap-1 text-xs">
+            {#if folded}<span class="truncate">{options.find((o) => o.checked)?.label ?? ""}</span>{/if}
+            <ChevronDown class="size-3.5 shrink-0 transition-transform {folded ? '' : 'rotate-180'}" />
+          </span>
+        </button>
+      {:else}
+        <span class={title}>{entry.label}</span>
+      {/if}
+      {#if folded}
+        <!-- folded: nothing more; the header shows the current choice -->
+      {:else if groups.length > 1 && fit.rows === 1}
         <!-- separated groups on one line, every option the same width -->
         <div class="flex items-center gap-1.5">
           {#each groups as group, g}
@@ -110,6 +138,16 @@
           ></button>
         {/each}
       </div>
+    </section>
+  {:else if entry.type === "slider"}
+    {@const v = drafts[entry.id] ?? entry.value}
+    <section class="flex flex-col gap-2">
+      <div class="flex items-center justify-between">
+        <span class={title}>{entry.label}</span>
+        <span class="text-muted-foreground tabular font-mono text-xs">{v}{entry.unit}</span>
+      </div>
+      <Slider type="single" min={entry.min} max={entry.max} step={entry.step || 1} value={v}
+        onValueChange={(x) => (drafts[entry.id] = x)} onValueCommit={(x) => slide(entry, x)} />
     </section>
   {:else if entry.type === "submenu"}
     <section class="flex flex-col gap-1">

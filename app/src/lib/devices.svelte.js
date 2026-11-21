@@ -29,6 +29,17 @@ MODULES.forEach((m) => {
 
 export const moduleFor = (id) => MODULES.find((m) => m.id === id);
 
+/** Add a module built at runtime (a device package, see lib/packages.js). Call before the app
+ *  mounts: MODULES is not reactive. A module that `replaces` a built-in one removes it. */
+export function addModule(m) {
+  const drop = MODULES.findIndex((x) => x.id === m.replaces || x.id === m.id);
+  if (drop >= 0) MODULES.splice(drop, 1);
+  MODULES.push(m);
+  MODULES.sort((a, b) => (a.order ?? 99) - (b.order ?? 99));
+  deviceState(m.id);
+  if (m.demo?.apply) setDemoHandler(m.id, m.demo.apply);
+}
+
 /** Name to show for a device (modules may derive it from the config, e.g. the VIA definition). */
 export const displayName = (m) => m.displayName?.(devices[m.id]) ?? m.name;
 // (module `name` may be a getter calling t(), so it follows the UI language)
@@ -48,11 +59,13 @@ function onEvent(id, e) {
     case "config": {
       const first = !d.config;
       d.config = e.config;
+      d.connected = true; // only a connected device reports a config
       if (first) toast.success(t("app.toastConnected", { name: displayName(m) }));
       break;
     }
     case "status":
       d.status = e.status;
+      d.connected = true;
       break;
     case "error":
       toast.error(e.message);
@@ -68,14 +81,25 @@ export async function initDevices() {
     for (const m of MODULES) if (m.demo) Object.assign(devices[m.id], { connected: true, driver: true, reason: null, ...structuredClone(m.demo.state) });
     return;
   }
+  // Subscribe before reading the snapshots: an event sent in between (typically "connected"
+  // right at startup) would otherwise be lost. Events that arrive before the snapshots are
+  // applied are replayed on top of them.
+  let pending = [];
+  const unlisten = await listen("device", ({ payload }) => {
+    if (pending) pending.push(payload);
+    else onEvent(payload.device, payload);
+  });
   try {
     for (const entry of await invoke("devices")) {
       if (!devices[entry.id]) continue; // driver without a frontend module
       Object.assign(devices[entry.id], entry.snapshot, { driver: true });
     }
   } catch {
+    unlisten();
     for (const d of Object.values(devices)) d.reason = t("app.noBackend");
     return;
   }
-  await listen("device", ({ payload }) => onEvent(payload.device, payload));
+  const queued = pending;
+  pending = null;
+  for (const payload of queued) onEvent(payload.device, payload);
 }

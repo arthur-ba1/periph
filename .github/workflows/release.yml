@@ -1,0 +1,51 @@
+name: release
+
+# Push a tag like v0.2.0 to build Periph, the periph-pack toolbox and the add-device kit, and
+# publish them as a GitHub release (draft, so it can be reviewed before it goes public).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - run: npm --prefix app ci
+      - run: npm --prefix app run check:i18n
+      - run: npm --prefix app run build
+      - run: cargo test --workspace
+      - run: cargo build --release -p periph-app -p periph-pack
+      - name: Check the example packages
+        run: target/release/periph-pack.exe check packages/rapoo-vt2-max crates/periph-pack/tests/fixtures/sample-reports
+
+      - name: Assemble the kit
+        shell: pwsh
+        run: |
+          $name = "periph-${{ github.ref_name }}-windows-x64"
+          ./tools/make-kit.ps1 -Out "dist/$name"
+          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
+          echo "KIT=dist/$name.zip" >> $env:GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kit
+          path: ${{ env.KIT }}
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" "${{ env.KIT }}" --draft --title "Periph ${{ github.ref_name }}" --generate-notes

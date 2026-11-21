@@ -21,6 +21,7 @@ hidapi.workspace = true
 vt2-proto = { path = "../vt2-proto", features = ["serde"] }
 vt2-device = { path = "../vt2-device" }
 via = { path = "../via" }
+periph-pack = { path = "../periph-pack" }
 anyhow.workspace = true
 tauri = { version = "2", features = ["tray-icon"] }
 serde = { version = "1", features = ["derive"] }

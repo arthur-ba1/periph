@@ -9,7 +9,9 @@
     "searching": "Procurando teclado VIA",
     "text": "Conecte o teclado pelo cabo USB. Se o site do VIA (usevia.app) estiver aberto, feche a aba, porque os dois não podem usar o teclado ao mesmo tempo."
   },
-  "card": { "online": "Online", "searching": "Procurando", "layers": "VIA v{protocol} · {layers} camadas" },
+  "card": { "caps": "Keycaps", "color": "Cor do teclado", "online": "Online", "searching": "Procurando", "layers": "VIA v{protocol} · {layers} camadas" },
+  "caps": { "pudding": "Pudding (laterais translúcidas)", "solid": "Sólidas (só legendas e entre as teclas)" },
+  "colors": { "white": "Branco", "black": "Preto" },
   "badges": { "layers": "{n} camadas" },
   "keymap": {
     "title": "Keymap",

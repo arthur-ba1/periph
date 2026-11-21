@@ -3576,6 +3576,7 @@ dependencies = [
  "hidapi",
  "hidhide",
  "periph-core",
+ "periph-pack",
  "resvg",
  "serde",
  "serde_json",
@@ -3596,6 +3597,19 @@ dependencies = [
  "anyhow",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "periph-pack"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "hidapi",
+ "periph-core",
+ "serde",
+ "serde_json",
+ "vt2-device",
+ "vt2-proto",
 ]
 
 [[package]]
@@ -5735,6 +5749,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "hidapi",
+ "periph-pack",
  "via",
 ]
 

@@ -39,6 +39,8 @@ const RUMBLE_WATCHDOG: Duration = Duration::from_secs(5);
 /// Minimum spacing of status events sent to the UI (unless something visible changed).
 const STATUS_INTERVAL: Duration = Duration::from_millis(250);
 const INPUT_INTERVAL: Duration = Duration::from_millis(16);
+/// The config is written to disk once commands stop for this long (a slider sends many).
+const SAVE_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", content = "value", rename_all = "camelCase")]
@@ -663,6 +665,8 @@ struct DualSenseSession<C: SessionChannel> {
     output_count: u64,
     /// Periph's own lightbar / LED / trigger effects and how they share the pad with games.
     fx: effects::Engine,
+    /// When the config last changed without being saved yet (see [`SAVE_DELAY`]).
+    unsaved: Option<Instant>,
 }
 
 impl<C: SessionChannel> DualSenseSession<C> {
@@ -680,6 +684,7 @@ impl<C: SessionChannel> DualSenseSession<C> {
             last_input: None,
             output_count: 0,
             fx: effects::Engine::default(),
+            unsaved: None,
         }
     }
 
@@ -756,6 +761,9 @@ impl<C: SessionChannel> Drop for DualSenseSession<C> {
     /// a hidden physical pad or running motors behind.
     fn drop(&mut self) {
         self.stop_emulation();
+        if self.unsaved.take().is_some() {
+            save_config(&self.config);
+        }
     }
 }
 
@@ -809,12 +817,16 @@ impl<C: SessionChannel> Session for DualSenseSession<C> {
             Cmd::RightTrigger(v) => self.set_trigger(false, v)?,
         }
         self.fx.touch();
-        save_config(&self.config);
+        self.unsaved = Some(Instant::now());
         Ok(())
     }
 
     fn poll(&mut self) -> Result<Option<Value>> {
         let now = Instant::now();
+        if self.unsaved.is_some_and(|at| now.duration_since(at) >= SAVE_DELAY) {
+            self.unsaved = None;
+            save_config(&self.config);
+        }
         // Coalesce visual input to the display rate without slowing down game output.
         if self.last_input.is_none_or(|at| now.duration_since(at) >= INPUT_INTERVAL) {
             if let Some((battery, controls)) = self.pad.drain_input()? {

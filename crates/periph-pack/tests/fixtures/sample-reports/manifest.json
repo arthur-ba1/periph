@@ -1,0 +1,10 @@
+{
+  "format": 1,
+  "id": "sample-reports",
+  "name": "Sample reports device",
+  "kind": "mouse",
+  "version": "0.1.0",
+  "description": "Test fixture for the reports transport: a made-up device, never sent to hardware.",
+  "products": [{ "vid": "0xFFFE", "pid": "0x0001" }],
+  "interfaces": { "command": { "usagePage": "0xFF00", "usage": "0x0001" } }
+}

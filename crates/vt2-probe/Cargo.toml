@@ -9,3 +9,4 @@ license.workspace = true
 hidapi.workspace = true
 anyhow.workspace = true
 via = { path = "../via" }
+periph-pack = { path = "../periph-pack" }

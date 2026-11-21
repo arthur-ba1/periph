@@ -140,17 +140,25 @@
 @property --hs { syntax: "<number>"; inherits: true; initial-value: 0; }
 
 /* Battery bar while charging (BATTERY_BAR in lib/icons/Battery.svelte): a light sweeps along
-   the filled part, left to right. */
+   the filled part, left to right. It moves by transform so the compositor animates it without
+   repainting the page on every frame. */
 .charging-bar [data-slot="progress-indicator"] {
+  position: relative;
+  overflow: hidden;
+}
+.charging-bar [data-slot="progress-indicator"]::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 45%;
   background-image: linear-gradient(90deg, transparent, oklch(1 0 0 / 55%), transparent);
-  background-size: 45% 100%;
-  background-repeat: no-repeat;
   animation: charging-sweep 1.8s ease-in-out infinite;
+  will-change: transform;
 }
 @keyframes charging-sweep {
-  from { background-position: -80% 0; }
-  to { background-position: 180% 0; }
+  from { transform: translateX(-100%); }
+  to { transform: translateX(225%); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .charging-bar [data-slot="progress-indicator"] { animation: none; background-image: none; }
+  .charging-bar [data-slot="progress-indicator"]::after { animation: none; display: none; }
 }

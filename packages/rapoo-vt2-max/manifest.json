@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "id": "rapoo-vt2-max",
+  "name": "Rapoo VT2 Max",
+  "kind": "mouse",
+  "version": "0.1.0",
+  "authors": ["Periph contributors"],
+  "description": "DPI stages, polling rate, sensor settings and buttons. The same mouse as the built-in vt2 driver, as a package.",
+  "replaces": "vt2",
+  "products": [
+    { "vid": "0x24AE", "pid": "0x4623" },
+    { "vid": "0x24AE", "pid": "0x1423" }
+  ],
+  "interfaces": {
+    "command": { "usagePage": "0xFF00", "usage": "0x000E" },
+    "status": { "usagePage": "0xFF00", "usage": "0x0002", "optional": true }
+  }
+}

@@ -2,7 +2,7 @@
 //! Definitions are the VIA JSON files in app/src/devices/via/keyboards/ (embedded by build.rs,
 //! the frontend imports the same files) and are matched by VID/PID.
 
-use periph_core::{self as core, serde_json::{self, Value}, t, Absent, Connected, DeviceInfo, Driver, Kind, Session};
+use periph_core::{self as core, serde_json::{self, json, Value}, t, Absent, Connected, DeviceInfo, Driver, Kind, Session, Snapshot, Tray, TrayColor, TrayItem};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -19,6 +19,53 @@ struct Definition {
     encoders: u8,
     /// custom menu values: (name, channel, value id, byte length)
     values: Vec<(String, u8, u8, usize)>,
+    lighting: Lighting,
+}
+
+/// The definition's QMK lighting controls (VIA menu items), for the tray flyout.
+#[derive(Debug, Clone, Default)]
+struct Lighting {
+    /// (channel, id, options as (firmware name, value))
+    effect: Option<(u8, u8, Vec<(String, u8)>)>,
+    /// (channel, id, max)
+    brightness: Option<(u8, u8, u8)>,
+    /// (channel, id, max)
+    speed: Option<(u8, u8, u8)>,
+    /// (channel, id): two bytes, QMK hue and saturation 0..255
+    color: Option<(u8, u8)>,
+}
+
+fn range_max(o: &serde_json::Map<String, Value>) -> u8 {
+    o.get("options").and_then(|x| x.get(1)).and_then(Value::as_u64).unwrap_or(255).min(255) as u8
+}
+
+fn collect_lighting(v: &Value, out: &mut Lighting) {
+    match v {
+        Value::Object(o) => {
+            if let Some([Value::String(name), ch, id]) = o.get("content").and_then(Value::as_array).map(Vec::as_slice) {
+                if let (Some(ch), Some(id)) = (ch.as_u64().map(|x| x as u8), id.as_u64().map(|x| x as u8)) {
+                    let kind = o.get("type").and_then(Value::as_str).unwrap_or("");
+                    let qmk = name.starts_with("id_qmk_");
+                    if qmk && kind == "dropdown" && name.ends_with("_effect") && out.effect.is_none() {
+                        let opts = o.get("options").and_then(Value::as_array).into_iter().flatten().filter_map(|x| {
+                            let [n, v] = x.as_array()?.as_slice() else { return None };
+                            Some((n.as_str()?.to_string(), u8::try_from(v.as_u64()?).ok()?))
+                        });
+                        out.effect = Some((ch, id, opts.collect()));
+                    } else if qmk && kind == "range" && name.ends_with("_brightness") && out.brightness.is_none() {
+                        out.brightness = Some((ch, id, range_max(o)));
+                    } else if qmk && kind == "range" && name.ends_with("_effect_speed") && out.speed.is_none() {
+                        out.speed = Some((ch, id, range_max(o)));
+                    } else if qmk && kind == "color" && out.color.is_none() {
+                        out.color = Some((ch, id));
+                    }
+                }
+            }
+            o.values().for_each(|x| collect_lighting(x, out));
+        }
+        Value::Array(a) => a.iter().for_each(|x| collect_lighting(x, out)),
+        _ => {}
+    }
 }
 
 fn hex_u16(v: &Value) -> Option<u16> {
@@ -57,7 +104,9 @@ fn find_definition(vid: u16, pid: u16) -> Option<Definition> {
         let encoders = text.matches("\\n\\n\\n\\n\\n\\n\\n\\n\\ne").count().max(0) as u8;
         let mut values = Vec::new();
         collect_values(&j["menus"], &mut values);
-        Some(Definition { id, rows, cols, encoders, values })
+        let mut lighting = Lighting::default();
+        collect_lighting(&j["menus"], &mut lighting);
+        Some(Definition { id, rows, cols, encoders, values, lighting })
     })
 }
 
@@ -149,6 +198,115 @@ impl Session for ViaSession {
     }
 }
 
+// ---- tray flyout: lighting quick settings, sent exactly like the Lighting page does ----
+
+/// Swatches (sRGB for display) and the QMK hue/saturation they set.
+const TRAY_COLORS: [([u8; 3], [u8; 2]); 8] = [
+    ([255, 0, 0], [0, 255]),
+    ([255, 128, 0], [21, 255]),
+    ([255, 230, 0], [38, 255]),
+    ([0, 255, 60], [90, 255]),
+    ([0, 200, 255], [135, 255]),
+    ([40, 60, 255], [166, 255]),
+    ([170, 0, 255], [198, 255]),
+    ([255, 255, 255], [0, 0]),
+];
+
+/// Effects that use the chosen colour (the others cycle through hues on their own). QMK names,
+/// as VIA definitions list them.
+/// Effects that animate (the static ones ignore the speed).
+fn uses_speed(name: &str) -> bool {
+    let n = name.to_ascii_uppercase().replace([' ', '-'], "_");
+    !["SOLID_COLOR", "ALPHAS_MODS", "GRADIENT_UP_DOWN", "GRADIENT_LEFT_RIGHT", "BAND_SAT", "BAND_VAL", "STATIC"].iter().any(|k| n.contains(k))
+        || n.contains("PINWHEEL")
+        || n.contains("SPIRAL")
+}
+
+fn uses_color(name: &str) -> bool {
+    let n = name.to_ascii_uppercase().replace([' ', '-'], "_");
+    ["SOLID", "BREATHING", "RAINDROPS", "ALPHAS_MODS", "GRADIENT", "BAND_SAT", "BAND_VAL", "HUE_", "STATIC"].iter().any(|k| n.contains(k))
+        && !["RAINBOW", "CYCLE", "MULTISPLASH", "SOLID_SPLASH_RAINBOW"].iter().any(|k| n.contains(k))
+}
+
+fn snapshot_def(snap: &Snapshot) -> Option<(Definition, &serde_json::Map<String, Value>)> {
+    let c = snap.config.as_ref()?.as_object()?;
+    let vid = u16::try_from(c.get("vendorId")?.as_u64()?).ok()?;
+    let pid = u16::try_from(c.get("productId")?.as_u64()?).ok()?;
+    Some((find_definition(vid, pid)?, c))
+}
+
+fn value(c: &serde_json::Map<String, Value>, ch: u8, id: u8) -> Vec<u8> {
+    let bytes = c.get("values").and_then(|v| v.get(format!("{ch}:{id}"))).and_then(Value::as_array);
+    bytes.into_iter().flatten().filter_map(|b| b.as_u64().map(|b| b as u8)).collect()
+}
+
+/// Firmware effect names ("SOLID_COLOR") through the same catalog as the Lighting page.
+fn effect_label(name: &str) -> String {
+    let key = format!("via.lighting.effects.{name}");
+    let text = t(&key);
+    if text != key {
+        return text;
+    }
+    let lower = name.to_lowercase().replace('_', " ");
+    let mut chars = lower.chars();
+    chars.next().map(|f| f.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
+fn set_value(ch: u8, id: u8, data: Vec<u8>) -> Value {
+    json!({ "type": "setValue", "channel": ch, "id": id, "data": data, "save": true })
+}
+
+fn scale(percent: u8, max: u8) -> u8 {
+    ((percent as u32 * max as u32 + 50) / 100) as u8
+}
+
+/// Effect menu always; colour swatches and brightness only while the lights are on.
+fn tray_items(snap: &Snapshot) -> Vec<TrayItem> {
+    let Some((def, c)) = snapshot_def(snap) else { return Vec::new() };
+    let l = &def.lighting;
+    let mut items = Vec::new();
+    let (mut show_color, mut show_speed) = (true, true);
+    if let Some((ch, id, opts)) = &l.effect {
+        let cur = value(c, *ch, *id).first().copied();
+        items.push(TrayItem::Submenu {
+            label: t("via.lighting.labels.Effect"),
+            items: opts
+                .iter()
+                .map(|(name, v)| TrayItem::Check { id: format!("effect:{v}"), label: effect_label(name), checked: cur == Some(*v) })
+                .collect(),
+        });
+        if cur == Some(0) {
+            return items;
+        }
+        let name = opts.iter().find(|(_, v)| Some(*v) == cur).map(|(n, _)| n.as_str());
+        show_color = name.is_none_or(uses_color);
+        show_speed = name.is_none_or(uses_speed);
+    }
+    if let (Some((ch, id)), true) = (l.color, show_color) {
+        let cur = value(c, ch, id);
+        items.push(TrayItem::Colors {
+            label: t("via.lighting.labels.Color"),
+            options: TRAY_COLORS
+                .iter()
+                .enumerate()
+                .map(|(i, (rgb, hs))| TrayColor { id: format!("color:{i}"), rgb: *rgb, checked: cur.as_slice() == hs })
+                .collect(),
+        });
+    }
+    let percent_slider = |key: &str, label: &str, (ch, id, max): (u8, u8, u8)| {
+        let cur = value(c, ch, id).first().copied().unwrap_or(0) as u32;
+        let percent = if max == 0 { 0 } else { (cur * 100 + max as u32 / 2) / max as u32 };
+        TrayItem::Slider { id: key.into(), label: t(label), value: percent.min(100), min: 0, max: 100, step: 5, unit: "%".into() }
+    };
+    if let (Some(speed), true) = (l.speed, show_speed) {
+        items.push(percent_slider("speed", "via.lighting.labels.Effect Speed", speed));
+    }
+    if let Some(bright) = l.brightness {
+        items.push(percent_slider("bright", "via.lighting.labels.Brightness", bright));
+    }
+    items
+}
+
 pub struct ViaDriver;
 
 impl Driver for ViaDriver {
@@ -164,6 +322,37 @@ impl Driver for ViaDriver {
     fn retry_interval(&self) -> Duration {
         Duration::from_secs(3)
     }
+    fn tray(&self, snap: &Snapshot) -> Option<Tray> {
+        if !snap.connected {
+            return None;
+        }
+        let header = snap.product.clone().filter(|p| !p.trim().is_empty()).unwrap_or_else(|| self.info().name.to_string());
+        Some(Tray { header, battery: None, items: tray_items(snap) })
+    }
+    fn tray_command(&self, item: &str, snap: &Snapshot) -> Option<Value> {
+        let (def, _) = snapshot_def(snap)?;
+        let l = &def.lighting;
+        let (kind, arg) = item.split_once(':')?;
+        match kind {
+            // only values the definition offers, as VIA itself would send them
+            "effect" => {
+                let (ch, id, opts) = l.effect.as_ref()?;
+                let v = arg.parse::<u8>().ok().filter(|v| opts.iter().any(|(_, o)| o == v))?;
+                Some(set_value(*ch, *id, vec![v]))
+            }
+            "bright" | "speed" => {
+                let (ch, id, max) = if kind == "bright" { l.brightness? } else { l.speed? };
+                let p = arg.parse::<u8>().ok().filter(|p| *p <= 100)?;
+                Some(set_value(ch, id, vec![scale(p, max)]))
+            }
+            "color" => {
+                let (ch, id) = l.color?;
+                let (_, hs) = TRAY_COLORS.get(arg.parse::<usize>().ok()?)?;
+                Some(set_value(ch, id, hs.to_vec()))
+            }
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -174,5 +363,32 @@ mod tests {
         assert_eq!((d.rows, d.cols, d.encoders), (3, 4, 1));
         let ids: Vec<_> = d.values.iter().map(|v| (v.1, v.2, v.3)).collect();
         assert_eq!(ids, vec![(3, 1, 1), (3, 2, 1), (3, 3, 1), (3, 4, 2)]);
+    }
+
+    #[test]
+    fn tray_lighting_commands() {
+        use periph_core::{Driver, Snapshot};
+        use serde_json::json;
+        let d = super::find_definition(0x0000, 0x0000).unwrap();
+        assert!(d.lighting.effect.is_some() && d.lighting.brightness.is_some() && d.lighting.color.is_some() && d.lighting.speed.is_some());
+        let snap = Snapshot {
+            connected: true,
+            config: Some(json!({ "vendorId": 0, "productId": 0, "values": { "3:1": [100], "3:2": [1], "3:4": [0, 255] } })),
+            ..Default::default()
+        };
+        let tray = super::ViaDriver.tray(&snap).unwrap();
+        assert_eq!(tray.items.len(), 3, "solid colour: effect, colour, brightness (no speed)");
+        for id in ["effect:0", "bright:50", "bright:0", "bright:100", "speed:40", "color:0", "color:7"] {
+            let v = super::ViaDriver.tray_command(id, &snap).unwrap_or_else(|| panic!("{id}"));
+            periph_core::parse::<super::KbdCmd>(v).unwrap();
+        }
+        assert!(super::ViaDriver.tray_command("effect:250", &snap).is_none(), "only offered effects");
+        assert!(super::ViaDriver.tray_command("bright:101", &snap).is_none());
+        assert!(super::uses_color("SOLID_COLOR") && super::uses_color("BREATHING") && super::uses_color("SOLID_REACTIVE_SIMPLE"));
+        assert!(super::uses_speed("BREATHING") && super::uses_speed("CYCLE_ALL") && !super::uses_speed("SOLID_COLOR"));
+        assert!(!super::uses_color("CYCLE_ALL") && !super::uses_color("RAINBOW_MOVING_CHEVRON") && !super::uses_color("TYPING_HEATMAP"));
+        assert!(super::ViaDriver.tray_command("color:99", &snap).is_none());
+        let off = Snapshot { config: Some(json!({ "vendorId": 0, "productId": 0, "values": { "3:2": [0] } })), ..snap };
+        assert_eq!(super::ViaDriver.tray(&off).unwrap().items.len(), 1, "lights off: only the effect menu");
     }
 }

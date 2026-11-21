@@ -49,6 +49,29 @@
     "connected": "Connected",
     "openDevice": "Open in Periph"
   },
+  "packages": {
+    "refresh": "Re-read from device",
+    "errors": {
+      "notFound": "{name} not found",
+      "noAnswer": "The device did not answer (asleep or out of range)",
+      "busy": "The device is busy",
+      "badResponse": "Unexpected answer from the device",
+      "notReadable": "Address outside the package's readable range:",
+      "unknownSetting": "Unknown setting \"{id}\"",
+      "readOnly": "\"{id}\" can't be changed",
+      "invalidValue": "Invalid value for \"{id}\""
+    },
+    "ui": {
+      "item": "Item {n}",
+      "unknown": "Unknown",
+      "locked": "Decoded, but never seen written by the official software, so it can't be changed here.",
+      "battery": "Battery",
+      "package": "Device package · v{version}",
+      "failed": "Device package \"{name}\" was not loaded",
+      "asleepTitle": "The device is asleep",
+      "asleepText": "The receiver is connected but the device did not answer. Move or click it to wake it up; Periph retries on its own."
+    }
+  },
   "errors": {
     "invalidCommand": "invalid command"
   }

@@ -5,6 +5,8 @@ document.documentElement.classList.add("dark");
 const q = location.search;
 // The tray flyout window (flyout.rs) loads the same page; it only needs src/tray/.
 const tray = q.includes("tray") || window.__TAURI_INTERNALS__?.metadata?.currentWindow?.label === "tray";
+// Device packages become modules before the app mounts (the module list is not reactive).
+if (!tray) await (await import("./lib/packages.js")).loadPackages();
 const Root = tray
   ? (await import("./tray/Flyout.svelte")).default
   : q.includes("icons")
