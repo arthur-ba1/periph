@@ -6,6 +6,16 @@ App aberto (Rust + Tauri 2 + Svelte 5) para configurar periféricos sem o softwa
 Cada dispositivo é uma implementação plugável: um driver em Rust e um módulo de interface em
 Svelte. Qualquer pessoa pode adicionar o próprio mouse, teclado ou outro periférico.
 
+## Instalar no Windows
+
+Baixe `Periph-windows-x64-setup.exe` na [página de Releases](https://github.com/arthur-ba1/periph/releases).
+O instalador inclui o WebView2 para instalação offline no Windows 10 e 11 (64 bits) e dispensa
+ferramentas de desenvolvimento. O Windows SmartScreen pode exibir um aviso porque o instalador
+não tem assinatura digital.
+
+Os drivers de emulação do DualSense são instalados separadamente. Para adicionar um pacote de
+dispositivo com um agente de IA, baixe o ZIP do kit de release na mesma página.
+
 ## Dispositivos suportados
 | Dispositivo | Id | O que dá para configurar |
 | --- | --- | --- |

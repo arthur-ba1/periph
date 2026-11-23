@@ -6,6 +6,15 @@ An open app (Rust + Tauri 2 + Svelte 5) to configure computer peripherals withou
 manufacturer's software. Each device is a pluggable implementation: a Rust driver plus a Svelte
 UI module. Anyone can add their own mouse, keyboard or other peripheral.
 
+## Install on Windows
+
+Download `Periph-windows-x64-setup.exe` from [GitHub Releases](https://github.com/arthur-ba1/periph/releases).
+The installer includes WebView2 for offline installation on Windows 10 and 11 (64-bit). It requires
+no development tools. Windows SmartScreen may show a warning because the installer is unsigned.
+
+DualSense emulation drivers are installed separately. To add a device package with an AI agent,
+download the release kit ZIP from the same page.
+
 ## Supported devices
 | Device | Id | What you can configure |
 | --- | --- | --- |

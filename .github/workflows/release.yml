@@ -1,7 +1,7 @@
 name: release
 
-# Push a tag like v0.2.0 to build Periph, the periph-pack toolbox and the add-device kit, and
-# publish them as a GitHub release (draft, so it can be reviewed before it goes public).
+# Push a tag matching the Tauri app version, such as v0.1.0, to draft a GitHub release.
+# A manual run on a branch creates downloadable artifacts for testing.
 on:
   push:
     tags: ["v*"]
@@ -15,6 +15,16 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        run: |
+          $config = Get-Content crates/periph-app/tauri.conf.json -Raw | ConvertFrom-Json
+          $expectedTag = "v$($config.version)"
+          if ($env:GITHUB_REF_NAME -cne $expectedTag) {
+            throw "Release tag '$env:GITHUB_REF_NAME' must match the Tauri app version ($expectedTag)."
+          }
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -27,25 +37,49 @@ jobs:
       - run: npm --prefix app run check:i18n
       - run: npm --prefix app run build
       - run: cargo test --workspace
-      - run: cargo build --release -p periph-app -p periph-pack
+      - name: Build the offline Windows installer
+        working-directory: crates/periph-app
+        run: node ../../app/node_modules/@tauri-apps/cli/tauri.js build --bundles nsis --ci
+
+      - run: cargo build --release -p periph-pack
       - name: Check the example packages
         run: target/release/periph-pack.exe check packages/rapoo-vt2-max crates/periph-pack/tests/fixtures/sample-reports
 
       - name: Assemble the kit
         shell: pwsh
         run: |
-          $name = "periph-${{ github.ref_name }}-windows-x64"
+          $version = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME } else { "run-$env:GITHUB_RUN_NUMBER" }
+          $name = "periph-$version-windows-x64"
           ./tools/make-kit.ps1 -Out "dist/$name"
           Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip"
-          echo "KIT=dist/$name.zip" >> $env:GITHUB_ENV
+          "KIT=dist/$name.zip" >> $env:GITHUB_ENV
+
+      - name: Stage the installer
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem target/release/bundle/nsis -File -Filter '*_x64-setup.exe')
+          if ($installers.Count -ne 1) {
+            throw "Expected one x64 NSIS installer, found $($installers.Count)."
+          }
+          $path = 'dist/Periph-windows-x64-setup.exe'
+          Copy-Item -LiteralPath $installers[0].FullName -Destination $path
+          "INSTALLER=$path" >> $env:GITHUB_ENV
 
       - uses: actions/upload-artifact@v4
         with:
           name: kit
           path: ${{ env.KIT }}
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: ${{ env.INSTALLER }}
+          if-no-files-found: error
+          compression-level: 0
 
       - name: Draft release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" "${{ env.KIT }}" --draft --title "Periph ${{ github.ref_name }}" --generate-notes
+        run: gh release create $env:GITHUB_REF_NAME $env:INSTALLER $env:KIT --verify-tag --draft --title "Periph $env:GITHUB_REF_NAME" --generate-notes
